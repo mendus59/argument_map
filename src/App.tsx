@@ -6,6 +6,7 @@ import DebatePage from './pages/DebatePage'
 import InvitePage from './pages/InvitePage'
 import SamplePage from './pages/SamplePage'
 import ImportPage from './pages/ImportPage'
+import LibraryPage from './pages/LibraryPage'
 
 export default function App() {
   return (
@@ -22,9 +23,14 @@ function Shell() {
   return (
     <div className="app">
       <nav className="topbar">
-        <Link to="/" className="brand">
-          Parrhesia
-        </Link>
+        <div className="row">
+          <Link to="/" className="brand">
+            Parrhesia
+          </Link>
+          <Link to="/library" className="small nav-link">
+            Library
+          </Link>
+        </div>
         {user && (
           <div className="row-sm">
             {user.photoURL && <img className="avatar" src={user.photoURL} alt="" referrerPolicy="no-referrer" />}
@@ -43,6 +49,7 @@ function Shell() {
           <Route path="/sample" element={<SamplePage />} />
           <Route path="/invite/:token" element={<InvitePage />} />
           <Route path="/new" element={user ? <NewDebatePage /> : <Navigate to="/" replace />} />
+          <Route path="/library" element={<LibraryPage />} />
           <Route path="/import" element={user ? <ImportPage /> : <Navigate to="/" replace />} />
           <Route path="/d/:id" element={<DebatePage />} />
           <Route path="*" element={<p className="page narrow">This page doesn’t exist. <Link to="/">Go home</Link></p>} />

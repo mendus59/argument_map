@@ -1,6 +1,6 @@
-import { collection, doc, getDoc, getDocs, serverTimestamp, updateDoc, writeBatch, type Firestore } from 'firebase/firestore'
+import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore'
 import type { User } from 'firebase/auth'
-import type { DebateSource, SideId } from '../model/types'
+import type { Debate, DebateSource, SideId } from '../model/types'
 import type { Segment } from '../import/transcript'
 
 /** Segments per transcript document. Keeps each document well under Firestore's 1 MB limit. */
@@ -39,8 +39,41 @@ export interface ImportInput {
   segments: Segment[]
 }
 
+/** Whole names and subjects, plus each word in them, lower-cased, so a search for "smith" finds "Jane Smith". */
 export function searchTermsFor(names: string[], subjects: string[]) {
-  return [...new Set([...names, ...subjects].map((s) => s.trim().toLowerCase()).filter(Boolean))]
+  const phrases = [...names, ...subjects].map(normalize).filter(Boolean)
+  const words = phrases.flatMap((p) => p.split(' ')).filter((w) => w.length > 1)
+  return [...new Set([...phrases, ...words])]
+}
+
+export function normalize(s: string) {
+  return s.toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, ' ').replace(/\s+/g, ' ').trim()
+}
+
+export interface PublicDebate {
+  id: string
+  title: string
+  subjects: string[]
+  participantNames: string[]
+  source?: Debate['source']
+}
+
+/**
+ * Public imported debates, newest first, optionally matching a participant or subject.
+ * Sorted here rather than in the query so it needs no composite index.
+ */
+export async function searchPublic(db: Firestore, term: string): Promise<PublicDebate[]> {
+  const t = normalize(term)
+  const base = collection(db, 'debates')
+  const q = t
+    ? query(base, where('visibility', '==', 'public'), where('searchTerms', 'array-contains', t), limit(200))
+    : query(base, where('visibility', '==', 'public'), limit(200))
+  const snap = await getDocs(q)
+  const millis = (v: unknown) => (v as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0
+  return snap.docs
+    .map((d) => ({ id: d.id, data: d.data() as Debate & { updatedAt?: unknown } }))
+    .sort((a, b) => millis(b.data.updatedAt) - millis(a.data.updatedAt))
+    .map(({ id, data: x }) => ({ id, title: x.title, subjects: x.subjects, participantNames: x.participantNames, source: x.source }))
 }
 
 /** Creates a private imported debate, its conclusion and its transcript in one batch. */

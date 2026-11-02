@@ -130,5 +130,5 @@ Security rules enforce: only authors edit claim text; only a side's leader write
 | 3 | Honest-debate tools | Comments, restate before rebut, sources, crux highlighting, map check, stance history |
 | 4 | Async and live | Live listeners, presence, activity feed, optional timed rounds |
 | 5 | Sub-debates | Fork, shared stances, outcomes, unresolved depth, settled references, breadcrumbs and tree |
-| 6 | Admin import (moved up; import done) | YouTube link and pasted transcript, speakers to sides, select-to-map with timestamps, video seek, visibility, reader invites. Still to do: public library and search |
+| 6 | Admin import (done) | YouTube link and pasted transcript, speakers to sides, select-to-map with timestamps, video seek, visibility, reader invites. Public library with search by participant or subject |
 | 7 | AI and YouTube | Cloud Functions, AI assist review queue, budget cap, YouTube captions and transcription |
