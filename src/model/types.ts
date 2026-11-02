@@ -46,6 +46,29 @@ export interface Debate {
   outcome: Outcome | null
   outcomeVotes: Partial<Record<SideId, Outcome>>
   unresolvedDepth: number
+  /** Where an imported debate came from. */
+  source?: DebateSource
+  /** Lower-cased participant names and subjects, for searching public debates. */
+  searchTerms?: string[]
+}
+
+export interface DebateSource {
+  kind: 'youtube' | 'transcript'
+  url: string | null
+  videoId: string | null
+  title: string
+  channel: string | null
+  /** Speakers found in the transcript and the side each argued for (null for moderators). */
+  speakers: { label: string; side: SideId | null }[]
+  segmentCount: number
+}
+
+/** The transcript passage a claim was mapped from. */
+export interface ClaimSource {
+  segment: number
+  start: number | null
+  speaker: string | null
+  quote: string
 }
 
 export interface Claim {
@@ -59,7 +82,7 @@ export interface Claim {
   position?: { x: number; y: number }
   subDebateId?: string
   settledRef?: ClaimRef
-  transcriptSpan?: { startLine: number; endLine: number }
+  source?: ClaimSource
   aiSuggested?: boolean
 }
 

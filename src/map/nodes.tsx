@@ -1,5 +1,6 @@
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import type { Claim, Link, Stance } from '../model/types'
+import { formatTime } from '../import/transcript'
 
 export type ClaimNodeData = {
   claim: Claim
@@ -49,6 +50,11 @@ export function ClaimNode({ data }: NodeProps<ClaimNodeType>) {
         <StanceChip side="A" stance={stances.against} />
         {isCrux && <span className="badge crux">Crux</span>}
         {claim.subDebateId && <span className="badge fork">⑂ Sub-debate</span>}
+        {claim.source && (
+          <span className="badge time" title={`${claim.source.speaker ?? 'Transcript'}: “${claim.source.quote}”`}>
+            {claim.source.start !== null ? `▶ ${formatTime(claim.source.start)}` : '“ ”'}
+          </span>
+        )}
       </div>
     </div>
   )

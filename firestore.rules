@@ -7,7 +7,12 @@ service cloud.firestore {
 
     function signedIn() { return request.auth != null; }
     function uid() { return request.auth.uid; }
-    function isAdmin() { return signedIn() && request.auth.token.admin == true; }
+    // The admin is marked by a custom claim, or by a document at admins/{uid}
+    // created by hand in the Firebase console.
+    function isAdmin() {
+      return signedIn() && (request.auth.token.get('admin', false) == true
+        || exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
     function otherSide(side) { return side == 'for' ? 'against' : 'for'; }
     function validSide(side) { return side == 'for' || side == 'against'; }
 
@@ -29,12 +34,23 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['displayName', 'photoURL', 'updatedAt']);
     }
 
+    // ---- Admins ------------------------------------------------------------
+    // Written only from the console. Each user may check whether they are one.
+    match /admins/{userId} {
+      allow get: if signedIn() && uid() == userId;
+    }
+
     // ---- Debates -----------------------------------------------------------
     match /debates/{debateId} {
       allow read: if canRead(resource.data);
 
       // A signed-in user creates a private debate and leads the side they chose.
       allow create: if signedIn() && validNewDebate(request.resource.data);
+      // The admin imports debates. They start private.
+      allow create: if isAdmin()
+        && request.resource.data.origin == 'imported'
+        && request.resource.data.visibility == 'private'
+        && request.resource.data.createdBy == uid();
 
       // Leaders maintain the title and subjects. Admin can change anything.
       // Anyone holding an unused invite can join (see joining()).
@@ -110,6 +126,7 @@ service cloud.firestore {
 
       match /claims/{claimId} {
         allow read: if canRead(debate(debateId));
+        allow write: if isAdmin();
         // Members post claims for their own side. getAfter lets the conclusion
         // be written in the same batch that creates the debate.
         allow create: if signedIn()
@@ -136,6 +153,7 @@ service cloud.firestore {
       // A reason or objection: co-premises pointing at a target claim.
       match /links/{linkId} {
         allow read: if canRead(debate(debateId));
+        allow write: if isAdmin();
         allow create: if signedIn()
           && request.resource.data.authorUid == uid()
           && validSide(request.resource.data.side)
@@ -150,6 +168,7 @@ service cloud.firestore {
       // One stance per side per box; only that side's leader sets it.
       match /stances/{stanceId} {
         allow read: if canRead(debate(debateId));
+        allow write: if isAdmin();
         allow create, update: if validSide(request.resource.data.side)
           && stanceId == request.resource.data.targetId + '__' + request.resource.data.side
           && request.resource.data.value in ['agree', 'unsure', 'disagree']
@@ -157,6 +176,12 @@ service cloud.firestore {
           && request.resource.data.confidence >= 0 && request.resource.data.confidence <= 100
           && isLeader(debate(debateId), request.resource.data.side);
       }
+    }
+
+    // ---- Imported transcripts ---------------------------------------------
+    match /debates/{debateId}/transcript/{chunkId} {
+      allow read: if canRead(get(/databases/$(database)/documents/debates/$(debateId)).data);
+      allow write: if isAdmin();
     }
 
     // ---- Invites -----------------------------------------------------------

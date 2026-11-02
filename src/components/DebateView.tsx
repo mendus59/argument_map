@@ -5,6 +5,10 @@ import type { DebateMap, SideId } from '../model/types'
 function sideNames(map: DebateMap, side: SideId) {
   const { debate } = map
   const s = debate.sides[side]
+  if (debate.origin === 'imported') {
+    const names = (debate.source?.speakers ?? []).filter((sp) => sp.side === side).map((sp) => sp.label)
+    return names.length ? names.join(', ') : 'speakers not named'
+  }
   if (!s.memberUids.length) return 'waiting for a leader'
   return s.memberUids.map((u) => debate.people[u]?.name ?? 'Someone').join(', ')
 }
@@ -14,12 +18,18 @@ export function DebateView({
   map,
   eyebrow,
   panel,
+  source,
+  badges,
   selection,
   onSelect,
 }: {
   map: DebateMap
   eyebrow: string
   panel?: ReactNode
+  /** Video and transcript column for imported debates. */
+  source?: ReactNode
+  /** Extra tags beside the sides in the header. */
+  badges?: ReactNode
   selection?: Selection
   onSelect?: (s: Selection) => void
 }) {
@@ -39,12 +49,14 @@ export function DebateView({
           <span className="side against">
             {debate.sides.against.label} · {sideNames(map, 'against')}
           </span>
+          {badges}
           <span className="depth" title="How deep the chain of open sub-debates goes">
             Unresolved depth {debate.unresolvedDepth}
           </span>
         </div>
       </header>
-      <main className="workspace">
+      <main className={`workspace${source ? ' with-source' : ''}`}>
+        {source}
         <ArgumentMap map={map} selection={selection} onSelect={onSelect} />
         <aside className="side-panel">
           {panel}

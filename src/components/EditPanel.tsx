@@ -1,9 +1,10 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import type { User } from 'firebase/auth'
 import { db } from '../firebase'
 import { addArgument, addNote, editClaim, placeNote, setStance, type PremiseInput } from '../data/map'
 import { stanceOf } from '../model/crux'
-import type { Claim, ClaimType, DebateMap, Link, SideId, Stance, StanceValue } from '../model/types'
+import type { Claim, ClaimSource, ClaimType, DebateMap, Link, SideId, Stance, StanceValue } from '../model/types'
+import { formatTime } from '../import/transcript'
 import type { Selection } from '../map/ArgumentMap'
 
 const TYPES: { value: ClaimType; label: string }[] = [
@@ -19,21 +20,45 @@ interface Role {
   leader: boolean
 }
 
-export function EditPanel({ map, selection, user, role, onSelect }: { map: DebateMap; selection: Selection; user: User; role: Role; onSelect: (s: Selection) => void }) {
+/** Imported debates: a transcript passage waiting to be mapped, and how to play a box's moment. */
+export interface SourceProps {
+  draft: ClaimSource | null
+  onDraftUsed: () => void
+  onSeek?: (seconds: number) => void
+}
+
+export function EditPanel({
+  map,
+  selection,
+  user,
+  role,
+  onSelect,
+  source,
+}: {
+  map: DebateMap
+  selection: Selection
+  user: User
+  role: Role
+  onSelect: (s: Selection) => void
+  source?: SourceProps
+}) {
   const claim = selection?.kind === 'claim' ? map.claims.find((c) => c.id === selection.id) : undefined
   const link = selection?.kind === 'link' ? map.links.find((l) => l.id === selection.id) : undefined
 
   return (
     <div className="stack">
-      {!claim && !link && (
+      {source?.draft && !claim && (
+        <div className="hint">Now select the box this passage supports or objects to, or save it as a note below.</div>
+      )}
+      {!claim && !link && !source?.draft && (
         <p className="small muted">
           Select a box to add reasons or objections to it{role.leader ? ', or to set your team’s stance' : ''}. Select a
           group’s outline to check whether its premises lead where they point.
         </p>
       )}
-      {claim && <ClaimPanel key={claim.id} map={map} claim={claim} user={user} role={role} onSelect={onSelect} />}
+      {claim && <ClaimPanel key={`${claim.id}-${role.side}`} map={map} claim={claim} user={user} role={role} onSelect={onSelect} source={source} />}
       {link && <LinkPanel key={link.id} map={map} link={link} role={role} />}
-      {role.side && <NoteComposer debateId={map.debate.id} user={user} side={role.side} />}
+      {role.side && <NoteComposer key={role.side} debateId={map.debate.id} user={user} side={role.side} source={source} />}
     </div>
   )
 }
@@ -57,7 +82,44 @@ function StanceSummary({ map, targetId }: { map: DebateMap; targetId: string }) 
   )
 }
 
-function ClaimPanel({ map, claim, user, role, onSelect }: { map: DebateMap; claim: Claim; user: User; role: Role; onSelect: (s: Selection) => void }) {
+function SourceQuote({ src, onSeek }: { src: ClaimSource; onSeek?: (s: number) => void }) {
+  return (
+    <blockquote className="source-quote">
+      <p>“{src.quote}”</p>
+      <footer className="row-sm small muted">
+        {src.speaker ?? 'Unnamed speaker'}
+        {src.start !== null && (
+          <>
+            {' · '}
+            {onSeek ? (
+              <button className="linklike" type="button" onClick={() => onSeek(src.start!)}>
+                ▶ Play from {formatTime(src.start)}
+              </button>
+            ) : (
+              formatTime(src.start)
+            )}
+          </>
+        )}
+      </footer>
+    </blockquote>
+  )
+}
+
+function ClaimPanel({
+  map,
+  claim,
+  user,
+  role,
+  onSelect,
+  source,
+}: {
+  map: DebateMap
+  claim: Claim
+  user: User
+  role: Role
+  onSelect: (s: Selection) => void
+  source?: SourceProps
+}) {
   const [editing, setEditing] = useState(false)
   const isConclusion = claim.id === map.debate.conclusion.claimId
   const notes = map.claims.filter((c) => !c.placed)
@@ -83,9 +145,23 @@ function ClaimPanel({ map, claim, user, role, onSelect }: { map: DebateMap; clai
           </p>
         </>
       )}
+      {claim.source && <SourceQuote src={claim.source} onSeek={source?.onSeek} />}
       <StanceSummary map={map} targetId={claim.id} />
       {role.leader && role.side && <StanceEditor key={claim.id} map={map} targetId={claim.id} side={role.side} label="Your team’s stance" />}
-      {role.side && <ArgumentComposer map={map} target={claim} user={user} side={role.side} onAdded={() => onSelect({ kind: 'claim', id: claim.id })} />}
+      {role.side && (
+        <ArgumentComposer
+          map={map}
+          target={claim}
+          user={user}
+          side={role.side}
+          draft={source?.draft ?? null}
+          onSeek={source?.onSeek}
+          onAdded={() => {
+            source?.onDraftUsed()
+            onSelect({ kind: 'claim', id: claim.id })
+          }}
+        />
+      )}
       {role.side && notes.length > 0 && (
         <div className="stack-xs">
           <span className="eyebrow">Place a note under this box</span>
@@ -199,9 +275,37 @@ function defaultKind(map: DebateMap, target: Claim, side: SideId): Link['kind'] 
   return target.side === side ? 'reason' : 'objection'
 }
 
-function ArgumentComposer({ map, target, user, side, onAdded }: { map: DebateMap; target: Claim; user: User; side: SideId; onAdded: () => void }) {
+function ArgumentComposer({
+  map,
+  target,
+  user,
+  side,
+  draft,
+  onSeek,
+  onAdded,
+}: {
+  map: DebateMap
+  target: Claim
+  user: User
+  side: SideId
+  draft?: ClaimSource | null
+  onSeek?: (s: number) => void
+  onAdded: () => void
+}) {
   const [kind, setKind] = useState<Link['kind']>(defaultKind(map, target, side))
   const [premises, setPremises] = useState<PremiseInput[]>([{ text: '', type: 'unspecified' }])
+
+  // A transcript passage picked for mapping fills the next empty premise.
+  useEffect(() => {
+    if (!draft) return
+    setPremises((ps) => {
+      if (ps.some((p) => p.source === draft)) return ps
+      const entry = { text: draft.quote, type: 'unspecified' as ClaimType, source: draft }
+      const empty = ps.findIndex((p) => !p.text.trim())
+      if (empty >= 0) return ps.map((p, i) => (i === empty ? entry : p))
+      return ps.length < 8 ? [...ps, entry] : ps
+    })
+  }, [draft])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -249,6 +353,20 @@ function ArgumentComposer({ map, target, user, side, onAdded }: { map: DebateMap
             onChange={(e) => update(i, { text: e.target.value })}
             aria-label={`Premise ${i + 1}`}
           />
+          {p.source && (
+            <span className="small muted">
+              From {p.source.speaker ?? 'the transcript'}
+              {p.source.start !== null && (onSeek ? (
+                <>
+                  {' at '}
+                  <button className="linklike" type="button" onClick={() => onSeek(p.source!.start!)}>
+                    {formatTime(p.source.start)}
+                  </button>
+                </>
+              ) : ` at ${formatTime(p.source.start)}`)}
+              . Trim it to one clear claim.
+            </span>
+          )}
           <span className="row-sm">
             <TypeSelect id={`premise-type-${i}`} value={p.type} onChange={(t) => update(i, { type: t })} />
             {premises.length > 1 && (
@@ -294,15 +412,23 @@ function LinkPanel({ map, link, role }: { map: DebateMap; link: Link; role: Role
   )
 }
 
-function NoteComposer({ debateId, user, side }: { debateId: string; user: User; side: SideId }) {
-  const [text, setText] = useState('')
+function NoteComposer({ debateId, user, side, source }: { debateId: string; user: User; side: SideId; source?: SourceProps }) {
+  const draft = source?.draft ?? null
+  const [text, setText] = useState(draft?.quote ?? '')
+  const [lastQuote, setLastQuote] = useState(draft?.quote ?? null)
+  // Follow the passage being mapped; once it's used elsewhere, clear it from here too.
+  if ((draft?.quote ?? null) !== lastQuote) {
+    setLastQuote(draft?.quote ?? null)
+    setText(draft ? draft.quote : text === lastQuote ? '' : text)
+  }
   const [error, setError] = useState<string | null>(null)
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!text.trim()) return
     try {
-      await addNote(db, user, debateId, side, text)
+      await addNote(db, user, debateId, side, text, draft ?? undefined)
       setText('')
+      if (draft) source?.onDraftUsed()
       setError(null)
     } catch (err) {
       console.error(err)

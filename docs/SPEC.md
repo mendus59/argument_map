@@ -18,7 +18,7 @@ Out of scope for v1: open or social debates, audience participation, AI features
 
 | Role | Who | Can do |
 | --- | --- | --- |
-| Admin | Patrick (Firebase custom claim `admin: true`) | Import debates, run AI assist and transcription, set visibility, invite readers, see AI spend |
+| Admin | Patrick (a document at `admins/{uid}`, created by hand in the Firebase console, or the custom claim `admin: true`) | Import debates, run AI assist and transcription, set visibility, invite readers, see AI spend |
 | Team leader | The person who creates a side (the debate creator leads their side and invites the other side's leader) | Everything a member can, plus set the team's stance on every box, manage membership, mark sub-debates resolved, maintain the side's boxes |
 | Team member | Invited by their leader | Add boxes, notes, comments, sources; refute; open sub-debates |
 | Reader | Invited by a leader or the admin | View only |
@@ -73,12 +73,14 @@ debates/{debateId}
   outcome: 'accepted' | 'rejected' | 'disputed' | null
   outcomeVotes: { for?: Outcome, against?: Outcome }
   unresolvedDepth: number                   // kept up to date on fork and resolve
-  source?: { kind: 'transcript' | 'youtube', url?, title, recordedAt?, speakers: [{ label, side }] }
+  source?: { kind: 'transcript' | 'youtube', url, videoId, title, channel, speakers: [{ label, side }], segmentCount }
   createdAt, updatedAt
 debates/{id}/claims/{claimId}
   text, type, authorUid, side, placed: boolean, position: {x, y}
   subDebateId?, settledRef?: { debateId, claimId }
-  transcriptSpan?: { startLine, endLine }, aiSuggested?: boolean
+  source?: { segment, start, speaker, quote }   // transcript passage it was mapped from
+  aiSuggested?: boolean
+debates/{id}/transcript/{chunk}  index, segments: [{ start, speaker, text }]   // 500 per document, admin writes
 debates/{id}/links/{linkId}    kind: 'reason' | 'objection', targetClaimId, premiseClaimIds[], authorUid, side
 debates/{id}/stances/{targetId}__{side}
                                value: 'agree' | 'unsure' | 'disagree', confidence, setBy, updatedAt
@@ -115,7 +117,7 @@ Security rules enforce: only authors edit claim text; only a side's leader write
 
 ## Open items
 
-- **YouTube import.** Fetching captions or audio from YouTube needs care with YouTube's terms. Plan: use captions where they can be fetched in an allowed way, otherwise accept an uploaded audio file or transcript. Decide during milestone 7.
+- **YouTube import.** Decided: the admin pastes the transcript from YouTube's "Show transcript" panel (or loads an .srt, .vtt or .txt file). YouTube's API only gives captions to a video's owner, and scraping them breaks YouTube's terms, so there is no automatic fetch. The video plays through YouTube's official embed. Audio transcription for videos without captions stays in milestone 7.
 - **Email digest** for async debates needs an email provider. Free tiers exist; decide in milestone 4 or defer.
 
 ## Milestones
@@ -128,5 +130,5 @@ Security rules enforce: only authors edit claim text; only a side's leader write
 | 3 | Honest-debate tools | Comments, restate before rebut, sources, crux highlighting, map check, stance history |
 | 4 | Async and live | Live listeners, presence, activity feed, optional timed rounds |
 | 5 | Sub-debates | Fork, shared stances, outcomes, unresolved depth, settled references, breadcrumbs and tree |
-| 6 | Admin import | Transcript import, speaker mapping, highlight-to-map, visibility, public library and search |
+| 6 | Admin import (moved up; import done) | YouTube link and pasted transcript, speakers to sides, select-to-map with timestamps, video seek, visibility, reader invites. Still to do: public library and search |
 | 7 | AI and YouTube | Cloud Functions, AI assist review queue, budget cap, YouTube captions and transcription |

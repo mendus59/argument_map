@@ -9,6 +9,10 @@ import {
 } from '@firebase/rules-unit-testing'
 import {
   arrayUnion,
+  getDocs,
+  collection,
+  query,
+  where,
   doc,
   getDoc,
   serverTimestamp,
@@ -20,6 +24,7 @@ import {
 import type { User } from 'firebase/auth'
 import { acceptInvite, createDebate, createInvite, getInvite, roleIn } from '../src/data/debates'
 import { addArgument, addNote, editClaim, placeNote, setStance } from '../src/data/map'
+import { CHUNK, createImport, loadTranscript, setVisibility } from '../src/data/imports'
 import type { Debate } from '../src/model/types'
 
 let env: RulesTestEnvironment
@@ -322,5 +327,82 @@ describe('map editing (milestone 2)', () => {
     await assertSucceeds(setStance(db('ben'), 'd1', linkId, 'against', 'agree', 80))
     await assertFails(setDoc(doc(db('ben'), 'debates/d1/stances/c__against'), { targetId: 'c', side: 'against', value: 'maybe', confidence: 50 }))
     await assertFails(setDoc(doc(db('ben'), 'debates/d1/stances/c__against'), { targetId: 'c', side: 'against', value: 'agree', confidence: 150 }))
+  })
+})
+
+describe('admin import', () => {
+  const user = (uid: string, name: string) => ({ uid, displayName: name, photoURL: null, email: null }) as unknown as User
+  const patrick = user('pat', 'Patrick')
+  const segments = Array.from({ length: CHUNK + 20 }, (_, i) => ({ start: i * 3, speaker: i % 2 ? 'MAYOR' : 'COUNCILLOR', text: `Line ${i}` }))
+  const input = {
+    title: 'Council debate',
+    conclusion: 'Buses should be free.',
+    subjects: ['transit'],
+    labels: { for: 'Mayor', against: 'Councillor' },
+    source: {
+      kind: 'youtube' as const,
+      url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      videoId: 'dQw4w9WgXcQ',
+      title: 'Council debate',
+      channel: 'City TV',
+      speakers: [
+        { label: 'MAYOR', side: 'for' as const },
+        { label: 'COUNCILLOR', side: 'against' as const },
+      ],
+    },
+    segments,
+  }
+
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore() as unknown as Firestore, 'admins/pat'), { note: 'admin' })
+    })
+  })
+
+  it('lets only the admin import, and imports start private', async () => {
+    await assertFails(createImport(db('ana'), user('ana', 'Ana'), input))
+    const id = await assertSucceeds(createImport(db('pat'), patrick, input))
+    const d = (await getDoc(doc(db('pat'), `debates/${id}`))).data() as Debate
+    expect(d.visibility).toBe('private')
+    expect(d.participantNames).toEqual(['MAYOR', 'COUNCILLOR'])
+    expect(d.searchTerms).toEqual(['mayor', 'councillor', 'transit'])
+    expect(await loadTranscript(db('pat'), id)).toEqual(segments)
+    await assertFails(getDoc(doc(db('ana'), `debates/${id}`)))
+    await assertFails(loadTranscript(db(null), id))
+  })
+
+  it('lets users check only their own admin record', async () => {
+    await assertSucceeds(getDoc(doc(db('pat'), 'admins/pat')))
+    await assertFails(getDoc(doc(db('ana'), 'admins/pat')))
+    await assertFails(setDoc(doc(db('ana'), 'admins/ana'), { note: 'me too' }))
+  })
+
+  it('lets the admin map passages for both sides and set both stances', async () => {
+    const id = await createImport(db('pat'), patrick, input)
+    const d = (await getDoc(doc(db('pat'), `debates/${id}`))).data() as Debate
+    const target = d.conclusion.claimId
+    const source = { segment: 3, start: 9, speaker: 'MAYOR', quote: 'Line 3' }
+    await assertSucceeds(addArgument(db('pat'), patrick, id, 'for', 'reason', target, [{ text: 'Line 3', type: 'fact', source }]))
+    await assertSucceeds(addArgument(db('pat'), patrick, id, 'against', 'objection', target, [{ text: 'Line 4', type: 'fact' }]))
+    await assertSucceeds(setStance(db('pat'), id, target, 'for', 'agree', 90))
+    await assertSucceeds(setStance(db('pat'), id, target, 'against', 'disagree', 80))
+    const claims = await getDocs(query(collection(db('pat'), `debates/${id}/claims`), where('side', '==', 'for')))
+    expect(claims.docs.some((c) => c.data().source?.start === 9)).toBe(true)
+    await assertFails(addNote(db('ana'), user('ana', 'Ana'), id, 'for', 'Sneaky'))
+  })
+
+  it('opens the debate and transcript to everyone once made public, and readers by invite', async () => {
+    const id = await createImport(db('pat'), patrick, input)
+    const snap = await getDoc(doc(db('pat'), `debates/${id}`))
+    const debate = { ...(snap.data() as Omit<Debate, 'id'>), id }
+    const token = await assertSucceeds(createInvite(db('pat'), patrick, debate, 'reader', null))
+    await assertSucceeds(acceptInvite(db('rita'), user('rita', 'Rita'), (await getInvite(db('rita'), token))!))
+    await assertSucceeds(loadTranscript(db('rita'), id))
+
+    await assertFails(setVisibility(db('rita'), id, 'public'))
+    await assertSucceeds(setVisibility(db('pat'), id, 'public'))
+    expect(await loadTranscript(db(null), id)).toHaveLength(segments.length)
+    await assertSucceeds(getDocs(query(collection(db(null), 'debates'), where('visibility', '==', 'public'))))
+    await assertFails(setDoc(doc(db('rita'), `debates/${id}/transcript/0000`), { index: 0, segments: [] }))
   })
 })
