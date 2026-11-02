@@ -105,6 +105,9 @@ service cloud.firestore {
       }
 
       // ---- Map contents (editing UI arrives in milestone 2) ----------------
+      function isAnyMember(d) { return isMemberOf(d, 'for') || isMemberOf(d, 'against'); }
+      function claimPath(debateId, claimId) { return /databases/$(database)/documents/debates/$(debateId)/claims/$(claimId); }
+
       match /claims/{claimId} {
         allow read: if canRead(debate(debateId));
         // Members post claims for their own side. getAfter lets the conclusion
@@ -112,18 +115,35 @@ service cloud.firestore {
         allow create: if signedIn()
           && request.resource.data.authorUid == uid()
           && validSide(request.resource.data.side)
+          && validClaimBody(request.resource.data)
+          && request.resource.data.placed is bool
           && isMemberOf(debateAfter(debateId), request.resource.data.side);
-        // Only the author changes the wording.
-        allow update: if signedIn() && resource.data.authorUid == uid()
-          && request.resource.data.authorUid == resource.data.authorUid
-          && request.resource.data.side == resource.data.side;
+        // Only the author changes the wording. Any debater can place an unplaced note.
+        allow update: if signedIn() && (
+          (resource.data.authorUid == uid()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'type', 'updatedAt'])
+            && validClaimBody(request.resource.data))
+          || (isAnyMember(debate(debateId))
+            && resource.data.placed == false && request.resource.data.placed == true
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['placed'])));
+
+        function validClaimBody(c) {
+          return c.text is string && c.text.size() > 0 && c.text.size() <= 1000
+            && c.type in ['fact', 'prediction', 'value', 'definition', 'unspecified'];
+        }
       }
 
+      // A reason or objection: co-premises pointing at a target claim.
       match /links/{linkId} {
         allow read: if canRead(debate(debateId));
         allow create: if signedIn()
           && request.resource.data.authorUid == uid()
           && validSide(request.resource.data.side)
+          && request.resource.data.kind in ['reason', 'objection']
+          && request.resource.data.premiseClaimIds is list
+          && request.resource.data.premiseClaimIds.size() > 0
+          && request.resource.data.premiseClaimIds.size() <= 8
+          && existsAfter(claimPath(debateId, request.resource.data.targetClaimId))
           && isMemberOf(debate(debateId), request.resource.data.side);
       }
 
@@ -132,6 +152,9 @@ service cloud.firestore {
         allow read: if canRead(debate(debateId));
         allow create, update: if validSide(request.resource.data.side)
           && stanceId == request.resource.data.targetId + '__' + request.resource.data.side
+          && request.resource.data.value in ['agree', 'unsure', 'disagree']
+          && request.resource.data.confidence is int
+          && request.resource.data.confidence >= 0 && request.resource.data.confidence <= 100
           && isLeader(debate(debateId), request.resource.data.side);
       }
     }

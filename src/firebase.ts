@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app'
-import { connectAuthEmulator, getAuth, GoogleAuthProvider } from 'firebase/auth'
+import { connectAuthEmulator, getAuth, GoogleAuthProvider, signInWithCredential } from 'firebase/auth'
 import { connectFirestoreEmulator, getFirestore } from 'firebase/firestore'
 
 const config = {
@@ -19,4 +19,10 @@ export const googleProvider = new GoogleAuthProvider()
 if (import.meta.env.VITE_USE_EMULATORS === 'true') {
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true })
   connectFirestoreEmulator(db, '127.0.0.1', 8080)
+  // Emulator-only helper for automated browser tests: sign in as a fake Google user.
+  ;(window as unknown as { __signInAs: (name: string) => Promise<unknown> }).__signInAs = (name: string) =>
+    signInWithCredential(
+      auth,
+      GoogleAuthProvider.credential(JSON.stringify({ sub: name.toLowerCase(), email: `${name.toLowerCase()}@example.com`, email_verified: true, name })),
+    )
 }

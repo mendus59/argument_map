@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ArgumentMap } from '../map/ArgumentMap'
+import { ArgumentMap, type Selection } from '../map/ArgumentMap'
 import type { DebateMap, SideId } from '../model/types'
 
 function sideNames(map: DebateMap, side: SideId) {
@@ -10,7 +10,19 @@ function sideNames(map: DebateMap, side: SideId) {
 }
 
 /** Debate header, map and unplaced notes. `panel` adds content to the side column. */
-export function DebateView({ map, eyebrow, panel }: { map: DebateMap; eyebrow: string; panel?: ReactNode }) {
+export function DebateView({
+  map,
+  eyebrow,
+  panel,
+  selection,
+  onSelect,
+}: {
+  map: DebateMap
+  eyebrow: string
+  panel?: ReactNode
+  selection?: Selection
+  onSelect?: (s: Selection) => void
+}) {
   const { debate, claims } = map
   const notes = claims.filter((c) => !c.placed)
   return (
@@ -33,7 +45,7 @@ export function DebateView({ map, eyebrow, panel }: { map: DebateMap; eyebrow: s
         </div>
       </header>
       <main className="workspace">
-        <ArgumentMap map={map} />
+        <ArgumentMap map={map} selection={selection} onSelect={onSelect} />
         <aside className="side-panel">
           {panel}
           {notes.length > 0 && (

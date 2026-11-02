@@ -124,7 +124,7 @@ Security rules enforce: only authors edit claim text; only a side's leader write
 | --- | --- | --- |
 | 0 | Skeleton (this PR) | Spec, Vite + React + TypeScript app, data model types, depth logic with tests, read-only sample map, CI |
 | 1 | Accounts and debates | Firebase Auth, create debate, invite other leader, members, readers, security rules |
-| 2 | Map editing | Claims, links, co-premise groups, unplaced notes, layout, stances, inference check |
+| 2 | Map editing (done) | Claims, links, co-premise groups, unplaced notes, automatic layout, stances, inference check |
 | 3 | Honest-debate tools | Comments, restate before rebut, sources, crux highlighting, map check, stance history |
 | 4 | Async and live | Live listeners, presence, activity feed, optional timed rounds |
 | 5 | Sub-debates | Fork, shared stances, outcomes, unresolved depth, settled references, breadcrumbs and tree |
