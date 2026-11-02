@@ -1,8 +1,8 @@
-# Argument Mapper v1 spec
+# Parrhesia v1 spec
 
 Status: draft for review · November 2026
 
-Argument Mapper helps two people or two teams lay out a debate as an argument map and work through it honestly. This spec covers v1. Design mockups: [round 1](https://claude.ai/artifact/NwwKrH3WDBMekz7iyXBPrr) (approaches) and [round 2](https://claude.ai/artifact/G5GhKndqfwWrEPKQAn11zP) (the chosen argument map).
+Parrhesia helps two people or two teams lay out a debate as an argument map and work through it honestly. This spec covers v1. Design mockups: [round 1](https://claude.ai/artifact/NwwKrH3WDBMekz7iyXBPrr) (approaches) and [round 2](https://claude.ai/artifact/G5GhKndqfwWrEPKQAn11zP) (the chosen argument map).
 
 ## Goals and limits
 
