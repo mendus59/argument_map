@@ -8,13 +8,24 @@ See [docs/SPEC.md](docs/SPEC.md) for the v1 spec and milestones.
 
 ```sh
 npm install
-npm run dev      # start the dev server
-npm test         # unit tests (Vitest)
+npm run dev          # dev server against the real Firebase project
+npm test             # unit tests (Vitest)
+npm run test:rules   # security rules and data-layer tests on the Firestore emulator (needs Java 21)
 npm run lint
 npm run build
 ```
 
-The app currently shows a read-only sample debate. Firebase is wired in from milestone 1; copy `.env.example` to `.env.local` and fill in your Firebase project's web app config to enable it.
+To develop without touching real data, start the emulators with `npm run emulators` and run the dev server with `VITE_USE_EMULATORS=true npm run dev`.
+
+The Firebase web config in `.env` is public by design; access is controlled by `firestore.rules`.
+
+### Deploy
+
+```sh
+npx firebase login
+npx firebase deploy --only firestore   # rules and indexes
+npm run build && npx firebase deploy --only hosting
+```
 
 ## Stack
 

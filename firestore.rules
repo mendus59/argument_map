@@ -1,0 +1,172 @@
+rules_version = '2';
+
+// Security rules for Parrhesia. See docs/SPEC.md ("Roles") for who may do what.
+// Tested in tests/rules.test.ts against the Firestore emulator.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+    function isAdmin() { return signedIn() && request.auth.token.admin == true; }
+    function otherSide(side) { return side == 'for' ? 'against' : 'for'; }
+    function validSide(side) { return side == 'for' || side == 'against'; }
+
+    function debatePath(debateId) { return /databases/$(database)/documents/debates/$(debateId); }
+    function debate(debateId) { return get(debatePath(debateId)).data; }
+    function debateAfter(debateId) { return getAfter(debatePath(debateId)).data; }
+
+    function canRead(d) {
+      return d.visibility == 'public' || isAdmin() || (signedIn() && uid() in d.participantUids);
+    }
+    function isLeader(d, side) { return signedIn() && d.sides[side].leaderUid == uid(); }
+    function isAnyLeader(d) { return isLeader(d, 'for') || isLeader(d, 'against'); }
+    function isMemberOf(d, side) { return signedIn() && uid() in d.sides[side].memberUids; }
+
+    // ---- Users -------------------------------------------------------------
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && uid() == userId
+        && request.resource.data.keys().hasOnly(['displayName', 'photoURL', 'updatedAt']);
+    }
+
+    // ---- Debates -----------------------------------------------------------
+    match /debates/{debateId} {
+      allow read: if canRead(resource.data);
+
+      // A signed-in user creates a private debate and leads the side they chose.
+      allow create: if signedIn() && validNewDebate(request.resource.data);
+
+      // Leaders maintain the title and subjects. Admin can change anything.
+      // Anyone holding an unused invite can join (see joining()).
+      allow update: if isAdmin()
+        || (isAnyLeader(resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'subjects', 'updatedAt']))
+        || joining(debateId);
+
+      allow delete: if isAdmin();
+
+      function validNewDebate(d) {
+        let mine = d.creatorSide;
+        let theirs = otherSide(mine);
+        return validSide(mine)
+          && d.createdBy == uid()
+          && d.title is string && d.title.size() > 0 && d.title.size() <= 300
+          && d.sides[mine].leaderUid == uid()
+          && d.sides[mine].memberUids == [uid()]
+          && d.sides[theirs].leaderUid == null
+          && d.sides[theirs].memberUids == []
+          && d.participantUids == [uid()]
+          && d.readerUids == []
+          && d.people.keys().hasOnly([uid()])
+          && d.visibility == 'private'
+          && d.origin == 'native'
+          && d.parent == null
+          && d.status == 'open';
+      }
+
+      // Joining writes the invite and the debate in one batch. The debate
+      // records which invite was used in lastJoin so these rules can check it.
+      function joining(debateId) {
+        let before = resource.data;
+        let after = request.resource.data;
+        let token = after.lastJoin.token;
+        let invitePath = /databases/$(database)/documents/invites/$(token);
+        let inviteBefore = get(invitePath).data;
+        let invite = getAfter(invitePath).data;
+        return signedIn()
+          && after.lastJoin.uid == uid()
+          && invite.debateId == debateId
+          && inviteBefore.usedBy == null
+          && invite.usedBy == uid()
+          && !(uid() in before.participantUids)
+          && after.participantUids == before.participantUids.concat([uid()])
+          && after.people.diff(before.people).affectedKeys().hasOnly([uid()])
+          && after.diff(before).affectedKeys().hasOnly(['sides', 'readerUids', 'participantUids', 'people', 'lastJoin', 'updatedAt'])
+          && joinShape(invite, before, after);
+      }
+
+      function joinShape(invite, before, after) {
+        return (invite.role == 'reader'
+            && after.readerUids == before.readerUids.concat([uid()])
+            && after.sides == before.sides)
+          || (invite.role == 'member'
+            && after.readerUids == before.readerUids
+            && after.sides[invite.side].leaderUid == before.sides[invite.side].leaderUid
+            && after.sides[invite.side].memberUids == before.sides[invite.side].memberUids.concat([uid()])
+            && after.sides[invite.side].label == before.sides[invite.side].label
+            && after.sides[otherSide(invite.side)] == before.sides[otherSide(invite.side)])
+          || (invite.role == 'leader'
+            && after.readerUids == before.readerUids
+            && before.sides[invite.side].leaderUid == null
+            && after.sides[invite.side].leaderUid == uid()
+            && after.sides[invite.side].memberUids == before.sides[invite.side].memberUids.concat([uid()])
+            && after.sides[invite.side].label == before.sides[invite.side].label
+            && after.sides[otherSide(invite.side)] == before.sides[otherSide(invite.side)]);
+      }
+
+      // ---- Map contents (editing UI arrives in milestone 2) ----------------
+      match /claims/{claimId} {
+        allow read: if canRead(debate(debateId));
+        // Members post claims for their own side. getAfter lets the conclusion
+        // be written in the same batch that creates the debate.
+        allow create: if signedIn()
+          && request.resource.data.authorUid == uid()
+          && validSide(request.resource.data.side)
+          && isMemberOf(debateAfter(debateId), request.resource.data.side);
+        // Only the author changes the wording.
+        allow update: if signedIn() && resource.data.authorUid == uid()
+          && request.resource.data.authorUid == resource.data.authorUid
+          && request.resource.data.side == resource.data.side;
+      }
+
+      match /links/{linkId} {
+        allow read: if canRead(debate(debateId));
+        allow create: if signedIn()
+          && request.resource.data.authorUid == uid()
+          && validSide(request.resource.data.side)
+          && isMemberOf(debate(debateId), request.resource.data.side);
+      }
+
+      // One stance per side per box; only that side's leader sets it.
+      match /stances/{stanceId} {
+        allow read: if canRead(debate(debateId));
+        allow create, update: if validSide(request.resource.data.side)
+          && stanceId == request.resource.data.targetId + '__' + request.resource.data.side
+          && isLeader(debate(debateId), request.resource.data.side);
+      }
+    }
+
+    // ---- Invites -----------------------------------------------------------
+    // The document id is an unguessable token; holding the link is the permission.
+    match /invites/{token} {
+      allow get: if signedIn();
+      allow list: if false;
+
+      allow create: if signedIn() && validInvite(request.resource.data);
+
+      // Claimed once, together with the debate update that uses it.
+      allow update: if signedIn()
+        && resource.data.usedBy == null
+        && request.resource.data.usedBy == uid()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedBy', 'usedAt'])
+        && debateAfter(resource.data.debateId).lastJoin.token == token;
+
+      function validInvite(inv) {
+        let d = debate(inv.debateId);
+        return inv.createdBy == uid()
+          && inv.usedBy == null
+          && inv.keys().hasOnly(['debateId', 'debateTitle', 'role', 'side', 'createdBy', 'createdAt', 'usedBy'])
+          && (
+            // The creator's leader invites the other side's leader while that seat is empty.
+            (inv.role == 'leader' && validSide(inv.side)
+              && d.sides[inv.side].leaderUid == null
+              && isLeader(d, otherSide(inv.side)))
+            // A leader invites members to their own side.
+            || (inv.role == 'member' && validSide(inv.side) && isLeader(d, inv.side))
+            // Any leader, or the admin, invites readers.
+            || (inv.role == 'reader' && inv.side == null && (isAnyLeader(d) || isAdmin()))
+          );
+      }
+    }
+  }
+}

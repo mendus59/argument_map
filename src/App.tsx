@@ -1,43 +1,51 @@
-import { ArgumentMap } from './map/ArgumentMap'
-import { sampleMap } from './model/sample'
+import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom'
+import { AuthProvider, useAuth } from './auth'
+import HomePage from './pages/HomePage'
+import NewDebatePage from './pages/NewDebatePage'
+import DebatePage from './pages/DebatePage'
+import InvitePage from './pages/InvitePage'
+import SamplePage from './pages/SamplePage'
 
 export default function App() {
-  const { debate, claims } = sampleMap
-  const notes = claims.filter((c) => !c.placed)
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Shell />
+      </BrowserRouter>
+    </AuthProvider>
+  )
+}
 
+function Shell() {
+  const { user, loading, signOut } = useAuth()
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="title">
-          <span className="eyebrow">Sample debate · read-only preview</span>
-          <h1>{debate.title}</h1>
-        </div>
-        <div className="sides">
-          <span className="side for">
-            {debate.sides.for.label} · {debate.sides.for.memberUids.length} members
-          </span>
-          <span className="side against">
-            {debate.sides.against.label} · {debate.sides.against.memberUids.length} member
-            {debate.sides.against.memberUids.length === 1 ? '' : 's'}
-          </span>
-          <span className="depth" title="How deep the chain of open sub-debates goes">
-            Unresolved depth {debate.unresolvedDepth}
-          </span>
-        </div>
-      </header>
-      <main className="workspace">
-        <ArgumentMap map={sampleMap} />
-        {notes.length > 0 && (
-          <aside className="notes">
-            <span className="eyebrow">Unplaced notes</span>
-            {notes.map((n) => (
-              <div key={n.id} className="note">
-                {n.text}
-              </div>
-            ))}
-          </aside>
+      <nav className="topbar">
+        <Link to="/" className="brand">
+          Parrhesia
+        </Link>
+        {user && (
+          <div className="row-sm">
+            {user.photoURL && <img className="avatar" src={user.photoURL} alt="" referrerPolicy="no-referrer" />}
+            <span className="small">{user.displayName}</span>
+            <button className="btn small-btn" type="button" onClick={() => signOut()}>
+              Sign out
+            </button>
+          </div>
         )}
-      </main>
+      </nav>
+      {loading ? (
+        <p className="page narrow muted">Loading…</p>
+      ) : (
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/sample" element={<SamplePage />} />
+          <Route path="/invite/:token" element={<InvitePage />} />
+          <Route path="/new" element={user ? <NewDebatePage /> : <Navigate to="/" replace />} />
+          <Route path="/d/:id" element={<DebatePage />} />
+          <Route path="*" element={<p className="page narrow">This page doesn’t exist. <Link to="/">Go home</Link></p>} />
+        </Routes>
+      )}
     </div>
   )
 }

@@ -14,8 +14,14 @@ export interface ClaimRef {
 
 export interface Side {
   label: string
-  leaderUid: string
+  /** null until the other side's leader accepts their invite */
+  leaderUid: string | null
   memberUids: string[]
+}
+
+export interface Person {
+  name: string
+  photoURL?: string | null
 }
 
 export interface Debate {
@@ -27,6 +33,12 @@ export interface Debate {
   visibility: 'private' | 'public'
   sides: Record<SideId, Side>
   readerUids: string[]
+  /** Everyone who can open the debate: both sides' members plus readers. Used for queries and rules. */
+  participantUids: string[]
+  /** Display names for everyone in participantUids. */
+  people: Record<string, Person>
+  createdBy: string
+  creatorSide: SideId
   /** The debate's conclusion. For a sub-debate this points at the forked claim in the parent. */
   conclusion: ClaimRef
   parent: ClaimRef | null
