@@ -1,0 +1,58 @@
+import type { DebateMap } from './types'
+
+/** Illustrative sample debate used until real data exists. Figures are placeholders. */
+export const sampleMap: DebateMap = {
+  debate: {
+    id: 'sample',
+    title: 'Should our city make its buses fare-free?',
+    subjects: ['transit', 'city budget'],
+    participantNames: ['Ana', 'Raj', 'Ben'],
+    origin: 'native',
+    visibility: 'private',
+    sides: {
+      for: { label: 'For', leaderUid: 'ana', memberUids: ['ana', 'raj'] },
+      against: { label: 'Against', leaderUid: 'ben', memberUids: ['ben'] },
+    },
+    readerUids: [],
+    conclusion: { debateId: 'sample', claimId: 'c' },
+    parent: null,
+    status: 'open',
+    outcome: null,
+    outcomeVotes: {},
+    unresolvedDepth: 1,
+  },
+  claims: [
+    { id: 'c', text: 'The city should make its buses fare-free.', type: 'value', authorUid: 'ana', side: 'for', placed: true },
+    { id: 'p1', text: 'Fares cover about 20% of bus operating cost.', type: 'fact', authorUid: 'ana', side: 'for', placed: true },
+    { id: 'p2', text: 'Ridership would rise sharply without fares.', type: 'prediction', authorUid: 'ana', side: 'for', placed: true },
+    { id: 'p3', text: 'New riders would mostly come from cars.', type: 'prediction', authorUid: 'ana', side: 'for', placed: true, subDebateId: 'sub-p3' },
+    { id: 'o1', text: 'Replacing fare revenue would force service cuts.', type: 'prediction', authorUid: 'ben', side: 'against', placed: true },
+    { id: 'o2', text: 'Riders should pay part of the cost of what they use.', type: 'value', authorUid: 'ben', side: 'against', placed: true },
+    { id: 'r1', text: 'A 1% payroll levy would cover the gap.', type: 'prediction', authorUid: 'raj', side: 'for', placed: true },
+    { id: 'n1', text: 'Didn’t Tallinn do this? Someone should check what happened there.', type: 'unspecified', authorUid: 'raj', side: 'for', placed: false },
+  ],
+  links: [
+    { id: 'l1', kind: 'reason', targetClaimId: 'c', premiseClaimIds: ['p1', 'p2', 'p3'], authorUid: 'ana', side: 'for' },
+    { id: 'l2', kind: 'objection', targetClaimId: 'c', premiseClaimIds: ['o1'], authorUid: 'ben', side: 'against' },
+    { id: 'l3', kind: 'objection', targetClaimId: 'c', premiseClaimIds: ['o2'], authorUid: 'ben', side: 'against' },
+    { id: 'l4', kind: 'objection', targetClaimId: 'o1', premiseClaimIds: ['r1'], authorUid: 'raj', side: 'for' },
+  ],
+  stances: [
+    { targetId: 'c', side: 'for', value: 'agree', confidence: 85 },
+    { targetId: 'c', side: 'against', value: 'disagree', confidence: 70 },
+    { targetId: 'p1', side: 'for', value: 'agree', confidence: 95 },
+    { targetId: 'p1', side: 'against', value: 'agree', confidence: 90 },
+    { targetId: 'p2', side: 'for', value: 'agree', confidence: 80 },
+    { targetId: 'p2', side: 'against', value: 'unsure', confidence: 50 },
+    { targetId: 'p3', side: 'for', value: 'agree', confidence: 75 },
+    { targetId: 'p3', side: 'against', value: 'disagree', confidence: 80 },
+    { targetId: 'o1', side: 'for', value: 'disagree', confidence: 70 },
+    { targetId: 'o1', side: 'against', value: 'agree', confidence: 70 },
+    { targetId: 'o2', side: 'for', value: 'disagree', confidence: 80 },
+    { targetId: 'o2', side: 'against', value: 'agree', confidence: 90 },
+    { targetId: 'r1', side: 'for', value: 'agree', confidence: 60 },
+    { targetId: 'r1', side: 'against', value: 'unsure', confidence: 40 },
+    { targetId: 'l1', side: 'for', value: 'agree', confidence: 90 },
+    { targetId: 'l1', side: 'against', value: 'agree', confidence: 80 },
+  ],
+}
