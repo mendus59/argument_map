@@ -19,6 +19,7 @@ import {
 } from 'firebase/firestore'
 import type { User } from 'firebase/auth'
 import { acceptInvite, createDebate, createInvite, getInvite, roleIn } from '../src/data/debates'
+import { addArgument, addNote, editClaim, placeNote, setStance } from '../src/data/map'
 import type { Debate } from '../src/model/types'
 
 let env: RulesTestEnvironment
@@ -263,5 +264,63 @@ describe('app data layer', () => {
     expect(after.readerUids).toEqual(['rita'])
     expect(after.participantUids).toEqual(['ana', 'ben', 'rita'])
     expect(roleIn({ ...after, id }, 'ben')).toEqual({ side: 'for', leader: true, reader: false })
+  })
+})
+
+describe('map editing (milestone 2)', () => {
+  const user = (uid: string, name: string) => ({ uid, displayName: name, photoURL: null, email: null }) as unknown as User
+
+  beforeEach(async () => {
+    await seedDebate()
+    await setDoc(doc(db('ana'), 'invites/t-lead'), invite('ana', 'leader', 'against'))
+    await setDoc(doc(db('ana'), 'invites/t-read'), invite('ana', 'reader', null))
+    await join('ben', 't-lead', 'leader', 'against')
+    await join('rita', 't-read', 'reader', null)
+  })
+
+  it('adds a reason with co-premises and an objection from the other side', async () => {
+    await assertSucceeds(addArgument(db('ana'), user('ana', 'Ana'), 'd1', 'for', 'reason', 'c', [
+      { text: 'Fares cover 20% of cost.', type: 'fact' },
+      { text: 'Ridership would rise.', type: 'prediction' },
+    ]))
+    await assertSucceeds(addArgument(db('ben'), user('ben', 'Ben'), 'd1', 'against', 'objection', 'c', [{ text: 'Service would be cut.', type: 'prediction' }]))
+  })
+
+  it('refuses arguments from readers, for the wrong side, or aimed at a missing box', async () => {
+    await assertFails(addArgument(db('rita'), user('rita', 'Rita'), 'd1', 'for', 'reason', 'c', [{ text: 'x', type: 'fact' }]))
+    await assertFails(addArgument(db('ben'), user('ben', 'Ben'), 'd1', 'for', 'reason', 'c', [{ text: 'x', type: 'fact' }]))
+    await assertFails(addArgument(db('ana'), user('ana', 'Ana'), 'd1', 'for', 'reason', 'nope', [{ text: 'x', type: 'fact' }]))
+  })
+
+  it('refuses empty or mistyped claims', async () => {
+    await assertFails(addArgument(db('ana'), user('ana', 'Ana'), 'd1', 'for', 'reason', 'c', [{ text: '   ', type: 'fact' }]))
+    await assertFails(setDoc(doc(db('ana'), 'debates/d1/claims/bad'), { text: 'x', type: 'opinion', authorUid: 'ana', side: 'for', placed: true }))
+  })
+
+  it('lets anyone on either side place a note, but not change its wording', async () => {
+    const noteId = await addNote(db('ana'), user('ana', 'Ana'), 'd1', 'for', 'Did Tallinn try this?')
+    await assertFails(updateDoc(doc(db('ben'), `debates/d1/claims/${noteId}`), { text: 'Changed' }))
+    await assertSucceeds(placeNote(db('ben'), user('ben', 'Ben'), 'd1', 'against', noteId, 'objection', 'c'))
+    const placed = (await getDoc(doc(db('ana'), `debates/d1/claims/${noteId}`))).data()
+    expect(placed?.placed).toBe(true)
+    expect(placed?.text).toBe('Did Tallinn try this?')
+  })
+
+  it('stops readers placing notes', async () => {
+    const noteId = await addNote(db('ana'), user('ana', 'Ana'), 'd1', 'for', 'A note')
+    await assertFails(updateDoc(doc(db('rita'), `debates/d1/claims/${noteId}`), { placed: true }))
+  })
+
+  it('lets the author edit wording and type, but not move a claim to the other side', async () => {
+    await assertSucceeds(editClaim(db('ana'), 'd1', 'c', 'The city should make buses fare-free.', 'value'))
+    await assertFails(updateDoc(doc(db('ana'), 'debates/d1/claims/c'), { side: 'against' }))
+  })
+
+  it('lets leaders set stances and inference checks within range', async () => {
+    const linkId = await addArgument(db('ana'), user('ana', 'Ana'), 'd1', 'for', 'reason', 'c', [{ text: 'Fares cover 20%.', type: 'fact' }])
+    await assertSucceeds(setStance(db('ben'), 'd1', 'c', 'against', 'disagree', 70))
+    await assertSucceeds(setStance(db('ben'), 'd1', linkId, 'against', 'agree', 80))
+    await assertFails(setDoc(doc(db('ben'), 'debates/d1/stances/c__against'), { targetId: 'c', side: 'against', value: 'maybe', confidence: 50 }))
+    await assertFails(setDoc(doc(db('ben'), 'debates/d1/stances/c__against'), { targetId: 'c', side: 'against', value: 'agree', confidence: 150 }))
   })
 })

@@ -4,12 +4,16 @@ import { useAuth } from '../auth'
 import { db } from '../firebase'
 import { createInvite, roleIn, watchDebateMap, type InviteRole } from '../data/debates'
 import { DebateView } from '../components/DebateView'
+import { EditPanel } from '../components/EditPanel'
+import type { Selection } from '../map/ArgumentMap'
 import type { Debate, DebateMap, SideId } from '../model/types'
 
 export default function DebatePage() {
   const { id = '' } = useParams()
   const [map, setMap] = useState<DebateMap | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
+  const [selection, setSelection] = useState<Selection>(null)
+  const { user } = useAuth()
 
   useEffect(
     () =>
@@ -23,7 +27,21 @@ export default function DebatePage() {
   if (error) return <p className="page narrow error">{error}</p>
   if (map === undefined) return <p className="page narrow muted">Loading…</p>
   if (map === null) return <p className="page narrow error">This debate doesn’t exist.</p>
-  return <DebateView map={map} eyebrow="Debate" panel={<TeamPanel debate={map.debate} />} />
+  const role = user ? roleIn(map.debate, user.uid) : null
+  return (
+    <DebateView
+      map={map}
+      eyebrow="Debate"
+      selection={selection}
+      onSelect={setSelection}
+      panel={
+        <>
+          {user && role && <EditPanel map={map} selection={selection} user={user} role={role} onSelect={setSelection} />}
+          <TeamPanel debate={map.debate} />
+        </>
+      }
+    />
+  )
 }
 
 const other = (s: SideId): SideId => (s === 'for' ? 'against' : 'for')

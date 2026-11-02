@@ -140,3 +140,24 @@ a { color: var(--accent); }
 .group-label { position: absolute; left: 12px; top: 5px; font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
 .group-node.reason .group-label { color: var(--agree); }
 .group-node.objection .group-label { color: var(--dis); }
+.claim-node, .group-node { cursor: pointer; }
+.claim-node.selected { box-shadow: 0 0 0 3px var(--accent); }
+.group-node.selected { box-shadow: 0 0 0 3px var(--accent); }
+.group-label { display: flex; gap: 8px; align-items: center; }
+.group-chips { display: inline-flex; gap: 4px; text-transform: none; letter-spacing: 0; }
+.selected-text { font-family: var(--display); font-size: 16px; line-height: 1.4; }
+.input { font: inherit; font-size: 13.5px; padding: 7px 9px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 100%; resize: vertical; }
+select.input { width: auto; }
+.linklike { font: inherit; background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; align-self: flex-start; }
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+.composer { background: var(--surface); border: 1.5px solid var(--accent); border-radius: 8px; padding: 10px; }
+.hint { font-size: 12.5px; background: var(--unsure-soft); border-radius: 6px; padding: 6px 8px; }
+.seg-sm button { flex: 1; font: inherit; font-size: 12.5px; padding: 6px 4px; border: 0; background: var(--surface); color: var(--ink); cursor: pointer; }
+.seg-sm button + button { border-left: 1px solid var(--line); }
+.seg-sm button.on.agree { background: var(--agree); color: var(--surface); font-weight: 600; }
+.seg-sm button.on.disagree { background: var(--dis); color: var(--surface); font-weight: 600; }
+.seg-sm button.on.unsure { background: var(--unsure); color: var(--surface); font-weight: 600; }
+.slider { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+.slider input { flex: 1; min-width: 0; }
+.num { font-variant-numeric: tabular-nums; min-width: 3.5ch; text-align: right; }
+.premise-list { margin: 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }

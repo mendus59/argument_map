@@ -6,8 +6,14 @@ export type ClaimNodeData = {
   role: 'conclusion' | 'reason' | 'objection'
   stances: { for?: Stance; against?: Stance }
   isCrux: boolean
+  selected: boolean
 }
-export type GroupNodeData = { link: Link; isRebuttal: boolean }
+export type GroupNodeData = {
+  link: Link
+  isRebuttal: boolean
+  stances: { for?: Stance; against?: Stance }
+  selected: boolean
+}
 
 export type ClaimNodeType = Node<ClaimNodeData, 'claim'>
 export type GroupNodeType = Node<GroupNodeData, 'premiseGroup'>
@@ -31,9 +37,9 @@ function StanceChip({ side, stance }: { side: 'F' | 'A'; stance?: Stance }) {
 }
 
 export function ClaimNode({ data }: NodeProps<ClaimNodeType>) {
-  const { claim, role, stances, isCrux } = data
+  const { claim, role, stances, isCrux, selected } = data
   return (
-    <div className={`claim-node ${role}`}>
+    <div className={`claim-node ${role}${selected ? ' selected' : ''}`}>
       <Handle type="target" position={Position.Bottom} isConnectable={false} />
       <Handle type="source" position={Position.Top} isConnectable={false} />
       <span className={`kind kind-${claim.type}`}>{TYPE_LABEL[claim.type]}</span>
@@ -49,14 +55,22 @@ export function ClaimNode({ data }: NodeProps<ClaimNodeType>) {
 }
 
 export function GroupNode({ data }: NodeProps<GroupNodeType>) {
-  const { link, isRebuttal } = data
+  const { link, isRebuttal, stances, selected } = data
   const n = link.premiseClaimIds.length
   const name = link.kind === 'reason' ? 'Reason' : isRebuttal ? 'Rebuttal' : 'Objection'
-  const label = n > 1 ? `${name} · all ${n} must hold` : name
+  const label = n > 2 ? `${name} · all ${n} must hold` : n === 2 ? `${name} · both must hold` : name
   return (
-    <div className={`group-node ${link.kind}`}>
+    <div className={`group-node ${link.kind}${selected ? ' selected' : ''}`} title="Select to check whether these premises lead to the conclusion">
       <Handle type="source" position={Position.Top} isConnectable={false} />
-      <span className="group-label">{label}</span>
+      <span className="group-label">
+        {label}
+        {(stances.for || stances.against) && (
+          <span className="group-chips">
+            <StanceChip side="F" stance={stances.for} />
+            <StanceChip side="A" stance={stances.against} />
+          </span>
+        )}
+      </span>
     </div>
   )
 }
