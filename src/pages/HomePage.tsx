@@ -31,6 +31,7 @@ export default function HomePage() {
 }
 
 function MyDebates({ uid }: { uid: string }) {
+  const { isAdmin } = useAuth()
   const [debates, setDebates] = useState<Debate[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -47,9 +48,16 @@ function MyDebates({ uid }: { uid: string }) {
     <div className="page narrow stack">
       <div className="row between">
         <h1>My debates</h1>
-        <Link className="btn pri" to="/new">
-          New debate
-        </Link>
+        <span className="row-sm">
+          {isAdmin && (
+            <Link className="btn" to="/import">
+              Import a debate
+            </Link>
+          )}
+          <Link className="btn pri" to="/new">
+            New debate
+          </Link>
+        </span>
       </div>
       {error && <p className="error">{error}</p>}
       {!debates && !error && <p className="muted">Loading…</p>}
@@ -63,8 +71,9 @@ function MyDebates({ uid }: { uid: string }) {
         <ul className="debate-list">
           {debates.map((d) => {
             const r = roleIn(d, uid)
-            const role = r.reader ? 'Reader' : r.side ? `${d.sides[r.side].label}${r.leader ? ' · leader' : ''}` : ''
-            const waiting = !d.sides.for.leaderUid || !d.sides.against.leaderUid
+            const imported = d.origin === 'imported'
+            const role = imported ? `Imported · ${d.visibility}` : r.reader ? 'Reader' : r.side ? `${d.sides[r.side].label}${r.leader ? ' · leader' : ''}` : ''
+            const waiting = !imported && (!d.sides.for.leaderUid || !d.sides.against.leaderUid)
             return (
               <li key={d.id}>
                 <Link to={`/d/${d.id}`} className="debate-item">

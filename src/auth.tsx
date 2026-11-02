@@ -2,10 +2,13 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { onAuthStateChanged, signInWithPopup, signOut as fbSignOut, type User } from 'firebase/auth'
 import { auth, db, googleProvider } from './firebase'
 import { saveProfile } from './data/debates'
+import { checkAdmin } from './data/imports'
 
 interface AuthState {
   user: User | null
   loading: boolean
+  /** True for the app admin, who can import debates. */
+  isAdmin: boolean
   signIn: () => Promise<void>
   signOut: () => Promise<void>
 }
@@ -15,13 +18,18 @@ const AuthContext = createContext<AuthState | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(
     () =>
       onAuthStateChanged(auth, (u) => {
         setUser(u)
         setLoading(false)
-        if (u) saveProfile(db, u).catch((e) => console.error('Could not save profile', e))
+        setIsAdmin(false)
+        if (u) {
+          saveProfile(db, u).catch((e) => console.error('Could not save profile', e))
+          checkAdmin(db, u).then(setIsAdmin)
+        }
       }),
     [],
   )
@@ -29,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthState = {
     user,
     loading,
+    isAdmin,
     signIn: async () => {
       await signInWithPopup(auth, googleProvider)
     },

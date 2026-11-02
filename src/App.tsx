@@ -5,6 +5,7 @@ import NewDebatePage from './pages/NewDebatePage'
 import DebatePage from './pages/DebatePage'
 import InvitePage from './pages/InvitePage'
 import SamplePage from './pages/SamplePage'
+import ImportPage from './pages/ImportPage'
 
 export default function App() {
   return (
@@ -42,6 +43,7 @@ function Shell() {
           <Route path="/sample" element={<SamplePage />} />
           <Route path="/invite/:token" element={<InvitePage />} />
           <Route path="/new" element={user ? <NewDebatePage /> : <Navigate to="/" replace />} />
+          <Route path="/import" element={user ? <ImportPage /> : <Navigate to="/" replace />} />
           <Route path="/d/:id" element={<DebatePage />} />
           <Route path="*" element={<p className="page narrow">This page doesn’t exist. <Link to="/">Go home</Link></p>} />
         </Routes>

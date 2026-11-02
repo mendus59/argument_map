@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { db } from '../firebase'
-import { createInvite, roleIn, watchDebateMap, type InviteRole } from '../data/debates'
+import { roleIn, watchDebateMap } from '../data/debates'
+import { InviteButton } from '../components/InviteButton'
+import { ImportedDebate } from './ImportedDebate'
 import { DebateView } from '../components/DebateView'
 import { EditPanel } from '../components/EditPanel'
 import type { Selection } from '../map/ArgumentMap'
@@ -27,6 +29,7 @@ export default function DebatePage() {
   if (error) return <p className="page narrow error">{error}</p>
   if (map === undefined) return <p className="page narrow muted">Loading…</p>
   if (map === null) return <p className="page narrow error">This debate doesn’t exist.</p>
+  if (map.debate.origin === 'imported') return <ImportedDebate map={map} />
   const role = user ? roleIn(map.debate, user.uid) : null
   return (
     <DebateView
@@ -67,41 +70,5 @@ function TeamPanel({ debate }: { debate: Debate }) {
         </div>
       )}
     </section>
-  )
-}
-
-function InviteButton({ debate, role, side, label, primary }: { debate: Debate; role: InviteRole; side: SideId | null; label: string; primary?: boolean }) {
-  const { user } = useAuth()
-  const [link, setLink] = useState<string | null>(null)
-  const [state, setState] = useState<'idle' | 'busy' | 'copied' | 'error'>('idle')
-
-  async function make() {
-    if (!user) return
-    setState('busy')
-    try {
-      const token = await createInvite(db, user, debate, role, side)
-      const url = `${window.location.origin}/invite/${token}`
-      setLink(url)
-      try {
-        await navigator.clipboard.writeText(url)
-        setState('copied')
-      } catch {
-        setState('idle')
-      }
-    } catch (e) {
-      console.error(e)
-      setState('error')
-    }
-  }
-
-  return (
-    <div className="stack-xs">
-      <button className={`btn ${primary ? 'pri' : ''}`} type="button" onClick={make} disabled={state === 'busy'}>
-        {label}
-      </button>
-      {link && <input className="link-box" readOnly value={link} onFocus={(e) => e.currentTarget.select()} aria-label="Invite link" />}
-      {state === 'copied' && <small className="ok">Link copied.</small>}
-      {state === 'error' && <small className="error">The invite could not be created. Try again.</small>}
-    </div>
   )
 }

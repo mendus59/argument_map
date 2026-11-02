@@ -19,6 +19,10 @@ To develop without touching real data, start the emulators with `npm run emulato
 
 The Firebase web config in `.env` is public by design; access is controlled by `firestore.rules`.
 
+### Admin access
+
+Importing debates is admin-only. To make an account the admin, sign in once, copy its User UID from Firebase console → Authentication → Users, then in Firestore create a collection `admins` with a document whose ID is that UID (any field, such as `note: "admin"`). Sign out and back in.
+
 ### Deploy
 
 ```sh

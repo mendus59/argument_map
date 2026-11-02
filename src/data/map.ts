@@ -1,10 +1,12 @@
 import { collection, doc, serverTimestamp, setDoc, updateDoc, writeBatch, type Firestore } from 'firebase/firestore'
 import type { User } from 'firebase/auth'
-import type { ClaimType, Link, SideId, StanceValue } from '../model/types'
+import type { ClaimSource, ClaimType, Link, SideId, StanceValue } from '../model/types'
 
 export interface PremiseInput {
   text: string
   type: ClaimType
+  /** The transcript passage this premise was mapped from (imported debates). */
+  source?: ClaimSource
 }
 
 /** Adds a reason or objection: new co-premise claims plus the link joining them to the target. */
@@ -23,7 +25,7 @@ export async function addArgument(
   for (const p of premises) {
     const ref = doc(collection(debateRef, 'claims'))
     ids.push(ref.id)
-    batch.set(ref, { text: p.text.trim(), type: p.type, authorUid: user.uid, side, placed: true, createdAt: serverTimestamp() })
+    batch.set(ref, { text: p.text.trim(), type: p.type, authorUid: user.uid, side, placed: true, ...(p.source ? { source: p.source } : {}), createdAt: serverTimestamp() })
   }
   const linkRef = doc(collection(debateRef, 'links'))
   batch.set(linkRef, { kind, targetClaimId, premiseClaimIds: ids, authorUid: user.uid, side, createdAt: serverTimestamp() })
@@ -32,9 +34,17 @@ export async function addArgument(
 }
 
 /** Adds a rough note that sits off the map until someone places it. */
-export async function addNote(db: Firestore, user: User, debateId: string, side: SideId, text: string) {
+export async function addNote(db: Firestore, user: User, debateId: string, side: SideId, text: string, source?: ClaimSource) {
   const ref = doc(collection(db, 'debates', debateId, 'claims'))
-  await setDoc(ref, { text: text.trim(), type: 'unspecified', authorUid: user.uid, side, placed: false, createdAt: serverTimestamp() })
+  await setDoc(ref, {
+    text: text.trim(),
+    type: 'unspecified',
+    authorUid: user.uid,
+    side,
+    placed: false,
+    ...(source ? { source } : {}),
+    createdAt: serverTimestamp(),
+  })
   return ref.id
 }
 
