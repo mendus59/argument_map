@@ -56,7 +56,7 @@ service cloud.firestore {
       // Anyone holding an unused invite can join (see joining()).
       allow update: if isAdmin()
         || (isAnyLeader(resource.data)
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'subjects', 'updatedAt']))
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'subjects', 'settings', 'updatedAt']))
         || joining(debateId);
 
       allow delete: if isAdmin();
@@ -176,6 +176,64 @@ service cloud.firestore {
           && request.resource.data.confidence >= 0 && request.resource.data.confidence <= 100
           && isLeader(debate(debateId), request.resource.data.side);
       }
+    }
+
+    // ---- Honest-debate tools (milestone 3) --------------------------------
+    match /debates/{debateId}/evidence/{evidenceId} {
+      allow read: if canRead(get(/databases/$(database)/documents/debates/$(debateId)).data);
+      allow write: if isAdmin();
+      // Any debater attaches material to a box; only they can take it off.
+      allow create: if signedIn()
+        && request.resource.data.addedBy == uid()
+        && request.resource.data.keys().hasOnly(['claimId', 'title', 'url', 'kind', 'addedBy', 'side', 'createdAt'])
+        && request.resource.data.title is string && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 300
+        && (request.resource.data.url == null
+            || (request.resource.data.url is string && request.resource.data.url.size() <= 2000 && request.resource.data.url.matches('https?://.+')))
+        && request.resource.data.kind in ['study', 'data', 'news', 'anecdote', 'opinion']
+        && exists(/databases/$(database)/documents/debates/$(debateId)/claims/$(request.resource.data.claimId))
+        && uid() in get(/databases/$(database)/documents/debates/$(debateId)).data.sides[request.resource.data.side].memberUids;
+      allow delete: if signedIn() && resource.data.addedBy == uid();
+    }
+
+    match /debates/{debateId}/comments/{commentId} {
+      allow read: if canRead(get(/databases/$(database)/documents/debates/$(debateId)).data);
+      allow write: if isAdmin();
+      allow create: if signedIn()
+        && request.resource.data.authorUid == uid()
+        && request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 2000
+        && request.resource.data.side in ['for', 'against']
+        && uid() in get(/databases/$(database)/documents/debates/$(debateId)).data.sides[request.resource.data.side].memberUids
+        && ((request.resource.data.kind == 'comment'
+              && request.resource.data.keys().hasOnly(['targetId', 'authorUid', 'side', 'kind', 'text', 'createdAt']))
+          || (request.resource.data.kind == 'restatement'
+              && request.resource.data.status == 'pending'
+              && request.resource.data.reply == null
+              && request.resource.data.respondedBy == null
+              && request.resource.data.keys().hasOnly(['targetId', 'authorUid', 'side', 'kind', 'text', 'status', 'reply', 'respondedBy', 'createdAt'])));
+      // The restated claim's side confirms the restatement or corrects it, once.
+      allow update: if signedIn()
+        && resource.data.kind == 'restatement'
+        && resource.data.status == 'pending'
+        && request.resource.data.status in ['confirmed', 'disputed']
+        && request.resource.data.respondedBy == uid()
+        && (request.resource.data.reply == null
+            || (request.resource.data.reply is string && request.resource.data.reply.size() <= 2000))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reply', 'respondedBy', 'respondedAt'])
+        && uid() in get(/databases/$(database)/documents/debates/$(debateId)).data.sides[
+             get(/databases/$(database)/documents/debates/$(debateId)/claims/$(resource.data.targetId)).data.side
+           ].memberUids;
+    }
+
+    // Written by a side's leader alongside each stance change. Never edited.
+    match /debates/{debateId}/stanceHistory/{changeId} {
+      allow read: if canRead(get(/databases/$(database)/documents/debates/$(debateId)).data);
+      allow create: if isAdmin() || (signedIn()
+        && request.resource.data.by == uid()
+        && request.resource.data.side in ['for', 'against']
+        && get(/databases/$(database)/documents/debates/$(debateId)).data.sides[request.resource.data.side].leaderUid == uid()
+        && request.resource.data.to.value in ['agree', 'unsure', 'disagree']
+        && request.resource.data.conceded is bool
+        && request.resource.data.keys().hasOnly(['targetId', 'side', 'from', 'to', 'conceded', 'by', 'at']));
     }
 
     // ---- Imported transcripts ---------------------------------------------

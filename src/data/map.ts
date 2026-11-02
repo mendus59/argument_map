@@ -1,6 +1,6 @@
 import { collection, doc, serverTimestamp, setDoc, updateDoc, writeBatch, type Firestore } from 'firebase/firestore'
 import type { User } from 'firebase/auth'
-import type { ClaimSource, ClaimType, Link, SideId, StanceValue } from '../model/types'
+import type { ClaimSource, ClaimType, Link, SideId, Stance, StanceValue } from '../model/types'
 
 export interface PremiseInput {
   text: string
@@ -79,14 +79,31 @@ export async function editClaim(db: Firestore, debateId: string, claimId: string
 
 /**
  * Sets a team's stance on a claim, or on a link (the inference check).
- * Only that side's leader may do this.
+ * Only that side's leader may do this. With `history`, the change is also
+ * recorded in the stance history (a concession is marked as such).
  */
-export async function setStance(db: Firestore, debateId: string, targetId: string, side: SideId, value: StanceValue, confidence: number) {
-  await setDoc(doc(db, 'debates', debateId, 'stances', `${targetId}__${side}`), {
-    targetId,
-    side,
-    value,
-    confidence: Math.round(Math.min(100, Math.max(0, confidence))),
-    updatedAt: serverTimestamp(),
-  })
+export async function setStance(
+  db: Firestore,
+  debateId: string,
+  targetId: string,
+  side: SideId,
+  value: StanceValue,
+  confidence: number,
+  history?: { by: string; from: Stance | undefined; conceded?: boolean },
+) {
+  const conf = Math.round(Math.min(100, Math.max(0, confidence)))
+  const batch = writeBatch(db)
+  batch.set(doc(db, 'debates', debateId, 'stances', `${targetId}__${side}`), { targetId, side, value, confidence: conf, updatedAt: serverTimestamp() })
+  if (history) {
+    batch.set(doc(collection(db, 'debates', debateId, 'stanceHistory')), {
+      targetId,
+      side,
+      from: history.from ? { value: history.from.value, confidence: history.from.confidence } : null,
+      to: { value, confidence: conf },
+      conceded: !!history.conceded,
+      by: history.by,
+      at: serverTimestamp(),
+    })
+  }
+  await batch.commit()
 }

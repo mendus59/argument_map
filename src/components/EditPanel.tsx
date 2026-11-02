@@ -5,6 +5,8 @@ import { addArgument, addNote, editClaim, placeNote, setStance, type PremiseInpu
 import { stanceOf } from '../model/crux'
 import type { Claim, ClaimSource, ClaimType, DebateMap, Link, SideId, Stance, StanceValue } from '../model/types'
 import { formatTime } from '../import/transcript'
+import { objectWithRestatement } from '../data/honest'
+import { CommentThread, EvidenceSection, MapCheckPanel, StanceHistory } from './HonestPanels'
 import type { Selection } from '../map/ArgumentMap'
 
 const TYPES: { value: ClaimType; label: string }[] = [
@@ -56,8 +58,9 @@ export function EditPanel({
           group’s outline to check whether its premises lead where they point.
         </p>
       )}
+      {!claim && !link && <MapCheckPanel map={map} onSelect={onSelect} />}
       {claim && <ClaimPanel key={`${claim.id}-${role.side}`} map={map} claim={claim} user={user} role={role} onSelect={onSelect} source={source} />}
-      {link && <LinkPanel key={link.id} map={map} link={link} role={role} />}
+      {link && <LinkPanel key={link.id} map={map} link={link} role={role} user={user} />}
       {role.side && <NoteComposer key={role.side} debateId={map.debate.id} user={user} side={role.side} source={source} />}
     </div>
   )
@@ -147,7 +150,18 @@ function ClaimPanel({
       )}
       {claim.source && <SourceQuote src={claim.source} onSeek={source?.onSeek} />}
       <StanceSummary map={map} targetId={claim.id} />
-      {role.leader && role.side && <StanceEditor key={claim.id} map={map} targetId={claim.id} side={role.side} label="Your team’s stance" />}
+      {role.leader && role.side && (
+        <StanceEditor
+          key={claim.id}
+          map={map}
+          targetId={claim.id}
+          side={role.side}
+          uid={user.uid}
+          label="Your team’s stance"
+          concedable={claim.side !== role.side && claim.id !== map.debate.conclusion.claimId}
+        />
+      )}
+      <EvidenceSection map={map} claim={claim} user={user} side={role.side} />
       {role.side && (
         <ArgumentComposer
           map={map}
@@ -180,6 +194,8 @@ function ClaimPanel({
           ))}
         </div>
       )}
+      <CommentThread map={map} targetId={claim.id} user={user} side={role.side} />
+      <StanceHistory map={map} targetId={claim.id} />
     </section>
   )
 }
@@ -227,7 +243,22 @@ function TypeSelect({ id, value, onChange }: { id: string; value: ClaimType; onC
   )
 }
 
-function StanceEditor({ map, targetId, side, label }: { map: DebateMap; targetId: string; side: SideId; label: string }) {
+function StanceEditor({
+  map,
+  targetId,
+  side,
+  uid,
+  label,
+  concedable,
+}: {
+  map: DebateMap
+  targetId: string
+  side: SideId
+  uid: string
+  label: string
+  /** The box is the other side's: offer a one-click "Fair point". */
+  concedable?: boolean
+}) {
   const current: Stance | undefined = stanceOf(map, targetId, side)
   const [value, setValue] = useState<StanceValue>(current?.value ?? 'unsure')
   const [confidence, setConfidence] = useState(current?.confidence ?? 50)
@@ -236,7 +267,7 @@ function StanceEditor({ map, targetId, side, label }: { map: DebateMap; targetId
 
   async function save() {
     try {
-      await setStance(db, map.debate.id, targetId, side, value, confidence)
+      await setStance(db, map.debate.id, targetId, side, value, confidence, { by: uid, from: current })
       setState('saved')
     } catch (e) {
       console.error(e)
@@ -266,8 +297,26 @@ function StanceEditor({ map, targetId, side, label }: { map: DebateMap; targetId
         {state === 'saved' && !dirty && <small className="ok">Saved.</small>}
         {state === 'error' && <small className="error">Couldn’t save. Only your team’s leader can set stances.</small>}
       </span>
+      {concedable && current?.value !== 'agree' && (
+        <button className="btn small-btn concede-btn" type="button" onClick={concede} title="Agree with this box, and record it as a concession">
+          Fair point
+        </button>
+      )}
     </div>
   )
+
+  async function concede() {
+    const conf = Math.max(confidence, 60)
+    try {
+      await setStance(db, map.debate.id, targetId, side, 'agree', conf, { by: uid, from: current, conceded: true })
+      setValue('agree')
+      setConfidence(conf)
+      setState('saved')
+    } catch (e) {
+      console.error(e)
+      setState('error')
+    }
+  }
 }
 
 function defaultKind(map: DebateMap, target: Claim, side: SideId): Link['kind'] {
@@ -294,6 +343,18 @@ function ArgumentComposer({
 }) {
   const [kind, setKind] = useState<Link['kind']>(defaultKind(map, target, side))
   const [premises, setPremises] = useState<PremiseInput[]>([{ text: '', type: 'unspecified' }])
+  const [restatement, setRestatement] = useState('')
+  // Objecting to the other side's box starts with restating it, unless this side already has.
+  const alreadyRestated = map.comments.some(
+    (c) => c.kind === 'restatement' && c.targetId === target.id && c.side === side && c.status !== 'disputed',
+  )
+  const mustRestate =
+    kind === 'objection' &&
+    target.side !== side &&
+    target.id !== map.debate.conclusion.claimId &&
+    map.debate.origin !== 'imported' &&
+    map.debate.settings?.restateFirst !== false &&
+    !alreadyRestated
 
   // A transcript passage picked for mapping fills the next empty premise.
   useEffect(() => {
@@ -316,12 +377,14 @@ function ArgumentComposer({
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if (!filled.length) return
+    if (!filled.length || (mustRestate && !restatement.trim())) return
     setBusy(true)
     setError(null)
     try {
-      await addArgument(db, user, map.debate.id, side, kind, target.id, filled)
+      if (mustRestate) await objectWithRestatement(db, user, map.debate.id, side, target.id, restatement, filled)
+      else await addArgument(db, user, map.debate.id, side, kind, target.id, filled)
       setPremises([{ text: '', type: 'unspecified' }])
+      setRestatement('')
       onAdded()
     } catch (err) {
       console.error(err)
@@ -341,6 +404,23 @@ function ArgumentComposer({
           Objection to it
         </button>
       </div>
+      {mustRestate && (
+        <div className="stack-xs restate">
+          <label className="small" htmlFor="restatement">
+            <strong>First, restate their point in your own words.</strong> {map.debate.sides[target.side].label} will confirm you’ve got it right, so you argue
+            with what they actually mean.
+          </label>
+          <textarea
+            id="restatement"
+            className="input"
+            rows={2}
+            maxLength={2000}
+            placeholder="So you’re saying that…"
+            value={restatement}
+            onChange={(e) => setRestatement(e.target.value)}
+          />
+        </div>
+      )}
       {premises.map((p, i) => (
         <div key={i} className="stack-xs premise-input">
           <textarea
@@ -385,14 +465,14 @@ function ArgumentComposer({
       {looksDouble && <p className="hint">This might be two claims in one. Splitting them into co-premises lets the other side accept one and dispute the other.</p>}
       {!looksDouble && unsourced && <p className="hint">Facts and predictions are stronger with a source. You can post as is.</p>}
       {error && <small className="error">{error}</small>}
-      <button className="btn pri small-btn" type="submit" disabled={busy || !filled.length}>
+      <button className="btn pri small-btn" type="submit" disabled={busy || !filled.length || (mustRestate && !restatement.trim())}>
         {busy ? 'Adding…' : 'Add to map'}
       </button>
     </form>
   )
 }
 
-function LinkPanel({ map, link, role }: { map: DebateMap; link: Link; role: Role }) {
+function LinkPanel({ map, link, role, user }: { map: DebateMap; link: Link; role: Role; user: User }) {
   const target = map.claims.find((c) => c.id === link.targetClaimId)
   const premises = link.premiseClaimIds.map((id) => map.claims.find((c) => c.id === id)).filter(Boolean) as Claim[]
   return (
@@ -407,7 +487,9 @@ function LinkPanel({ map, link, role }: { map: DebateMap; link: Link; role: Role
         ))}
       </ul>
       <StanceSummary map={map} targetId={link.id} />
-      {role.leader && role.side && <StanceEditor key={link.id} map={map} targetId={link.id} side={role.side} label="Your team’s answer" />}
+      {role.leader && role.side && <StanceEditor key={link.id} map={map} targetId={link.id} side={role.side} uid={user.uid} label="Your team’s answer" />}
+      <CommentThread map={map} targetId={link.id} user={user} side={role.side} />
+      <StanceHistory map={map} targetId={link.id} />
     </section>
   )
 }

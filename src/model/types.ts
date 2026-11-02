@@ -46,11 +46,20 @@ export interface Debate {
   outcome: Outcome | null
   outcomeVotes: Partial<Record<SideId, Outcome>>
   unresolvedDepth: number
+  settings?: DebateSettings
   /** Where an imported debate came from. */
   source?: DebateSource
   /** Lower-cased participant names and subjects, for searching public debates. */
   searchTerms?: string[]
 }
+
+export interface DebateSettings {
+  /** Objecting to the other side's box first asks you to restate it. On unless a leader turns it off. */
+  restateFirst?: boolean
+}
+
+/** Firestore timestamps, kept loose so the model doesn't depend on the SDK. */
+export type Time = { toMillis(): number } | null | undefined
 
 export interface DebateSource {
   kind: 'youtube' | 'transcript'
@@ -84,6 +93,7 @@ export interface Claim {
   settledRef?: ClaimRef
   source?: ClaimSource
   aiSuggested?: boolean
+  createdAt?: Time
 }
 
 export interface Link {
@@ -105,10 +115,55 @@ export interface Stance {
   confidence: number
 }
 
+export type EvidenceKind = 'study' | 'data' | 'news' | 'anecdote' | 'opinion'
+
+/** Supporting material attached to a claim. */
+export interface Evidence {
+  id: string
+  claimId: string
+  url: string | null
+  title: string
+  kind: EvidenceKind
+  addedBy: string
+  side: SideId
+  createdAt?: Time
+}
+
+/**
+ * A comment on a claim or link. A restatement is a paraphrase of the other side's
+ * claim, written before objecting to it, which that side confirms or corrects.
+ */
+export interface Comment {
+  id: string
+  targetId: string
+  authorUid: string
+  side: SideId
+  kind: 'comment' | 'restatement'
+  text: string
+  status?: 'pending' | 'confirmed' | 'disputed'
+  reply?: string | null
+  respondedBy?: string | null
+  createdAt?: Time
+}
+
+/** One change to a side's stance, kept so concessions and shifts stay visible. */
+export interface StanceChange {
+  id: string
+  targetId: string
+  side: SideId
+  from: { value: StanceValue; confidence: number } | null
+  to: { value: StanceValue; confidence: number }
+  conceded: boolean
+  by: string
+  at?: Time
+}
+
 /** Everything needed to render one debate's map. */
 export interface DebateMap {
   debate: Debate
   claims: Claim[]
   links: Link[]
   stances: Stance[]
+  evidence: Evidence[]
+  comments: Comment[]
 }
