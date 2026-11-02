@@ -59,4 +59,6 @@ export const sampleMap: DebateMap = {
     { targetId: 'l1', side: 'for', value: 'agree', confidence: 90 },
     { targetId: 'l1', side: 'against', value: 'agree', confidence: 80 },
   ],
+  evidence: [],
+  comments: [],
 }

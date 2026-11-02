@@ -61,6 +61,8 @@ function MapCanvas({ map, selection, onSelect }: Props) {
         role: p.link ? p.link.kind : 'conclusion',
         stances: { for: stanceOf(map, p.claim.id, 'for'), against: stanceOf(map, p.claim.id, 'against') },
         isCrux: cruxes.has(p.claim.id),
+        evidenceCount: map.evidence.filter((e) => e.claimId === p.claim.id).length,
+        commentCount: map.comments.filter((c) => c.targetId === p.claim.id).length,
         selected: selection?.kind === 'claim' && selection.id === p.claim.id,
       },
       style: { width: CLAIM_W },

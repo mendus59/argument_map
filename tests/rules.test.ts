@@ -24,6 +24,7 @@ import {
 import type { User } from 'firebase/auth'
 import { acceptInvite, createDebate, createInvite, getInvite, roleIn } from '../src/data/debates'
 import { addArgument, addNote, editClaim, placeNote, setStance } from '../src/data/map'
+import { addComment, addEvidence, objectWithRestatement, removeEvidence, respondToRestatement, setRestateFirst } from '../src/data/honest'
 import { CHUNK, createImport, loadTranscript, searchPublic, searchTermsFor, setVisibility } from '../src/data/imports'
 import type { Debate } from '../src/model/types'
 
@@ -418,5 +419,65 @@ describe('admin import', () => {
 
   it('builds search terms from whole names and their words', () => {
     expect(searchTermsFor(['Jane Smith'], ['City budget'])).toEqual(['jane smith', 'city budget', 'jane', 'smith', 'city', 'budget'])
+  })
+})
+
+describe('honest-debate tools (milestone 3)', () => {
+  const user = (uid: string, name: string) => ({ uid, displayName: name, photoURL: null, email: null }) as unknown as User
+  const ana = user('ana', 'Ana')
+  const ben = user('ben', 'Ben')
+  const rita = user('rita', 'Rita')
+
+  beforeEach(async () => {
+    await seedDebate()
+    await setDoc(doc(db('ana'), 'invites/t-lead'), invite('ana', 'leader', 'against'))
+    await setDoc(doc(db('ana'), 'invites/t-read'), invite('ana', 'reader', null))
+    await join('ben', 't-lead', 'leader', 'against')
+    await join('rita', 't-read', 'reader', null)
+  })
+
+  it('lets debaters attach sources for their side, and only the adder remove them', async () => {
+    await assertSucceeds(addEvidence(db('ben'), ben, 'd1', 'against', 'c', { title: 'Transit budget 2025', url: 'https://example.org/budget', kind: 'data' }))
+    await assertSucceeds(addEvidence(db('ana'), ana, 'd1', 'for', 'c', { title: 'Interview with a driver', url: '', kind: 'anecdote' }))
+    await assertFails(addEvidence(db('ana'), ana, 'd1', 'against', 'c', { title: 'Wrong side', url: '', kind: 'data' }))
+    await assertFails(addEvidence(db('rita'), rita, 'd1', 'for', 'c', { title: 'Reader', url: '', kind: 'data' }))
+    await assertFails(addEvidence(db('ana'), ana, 'd1', 'for', 'c', { title: 'Bad link', url: 'javascript:alert(1)', kind: 'data' }))
+    await assertFails(addEvidence(db('ana'), ana, 'd1', 'for', 'missing', { title: 'No box', url: '', kind: 'data' }))
+    const all = await getDocs(collection(db('rita'), 'debates/d1/evidence'))
+    expect(all.size).toBe(2)
+    const bens = all.docs.find((d) => d.data().addedBy === 'ben')!
+    await assertFails(removeEvidence(db('ana'), 'd1', bens.id))
+    await assertSucceeds(removeEvidence(db('ben'), 'd1', bens.id))
+  })
+
+  it('lets debaters comment, but not readers', async () => {
+    await assertSucceeds(addComment(db('ben'), ben, 'd1', 'against', 'c', 'What counts as fare-free?'))
+    await assertFails(addComment(db('rita'), rita, 'd1', 'for', 'c', 'Reader comment'))
+    await assertFails(addComment(db('ben'), ben, 'd1', 'for', 'c', 'Posing as the other side'))
+  })
+
+  it('records a restatement with the objection, which only the restated side can confirm', async () => {
+    await assertSucceeds(objectWithRestatement(db('ben'), ben, 'd1', 'against', 'c', 'You say buses should cost riders nothing.', [{ text: 'Someone still pays.', type: 'value' }]))
+    const restatement = (await getDocs(collection(db('ana'), 'debates/d1/comments'))).docs.find((d) => d.data().kind === 'restatement')!
+    expect(restatement.data().status).toBe('pending')
+    await assertFails(respondToRestatement(db('ben'), ben, 'd1', restatement.id, true, ''))
+    await assertFails(respondToRestatement(db('rita'), rita, 'd1', restatement.id, true, ''))
+    await assertSucceeds(respondToRestatement(db('ana'), ana, 'd1', restatement.id, false, 'Free at the point of use, paid for by taxes.'))
+    await assertFails(respondToRestatement(db('ana'), ana, 'd1', restatement.id, true, ''))
+    await assertFails(setDoc(doc(db('ben'), 'debates/d1/comments/fake'), { targetId: 'c', authorUid: 'ben', side: 'against', kind: 'restatement', text: 'x', status: 'confirmed', reply: null, respondedBy: null }))
+  })
+
+  it('records stance changes and concessions for the leader only', async () => {
+    await assertSucceeds(setStance(db('ben'), 'd1', 'c', 'against', 'disagree', 70, { by: 'ben', from: undefined }))
+    await assertSucceeds(setStance(db('ben'), 'd1', 'c', 'against', 'agree', 60, { by: 'ben', from: { targetId: 'c', side: 'against', value: 'disagree', confidence: 70 }, conceded: true }))
+    const history = await getDocs(collection(db('rita'), 'debates/d1/stanceHistory'))
+    expect(history.docs.map((d) => d.data().conceded).sort()).toEqual([false, true])
+    await assertFails(setStance(db('ana'), 'd1', 'c', 'against', 'agree', 60, { by: 'ana', from: undefined }))
+    await assertFails(updateDoc(doc(db('ben'), `debates/d1/stanceHistory/${history.docs[0].id}`), { conceded: false }))
+  })
+
+  it('lets a leader turn restate-first off, but not a reader', async () => {
+    await assertSucceeds(setRestateFirst(db('ben'), 'd1', false))
+    await assertFails(setRestateFirst(db('rita'), 'd1', true))
   })
 })

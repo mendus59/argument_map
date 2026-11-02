@@ -7,6 +7,8 @@ export type ClaimNodeData = {
   role: 'conclusion' | 'reason' | 'objection'
   stances: { for?: Stance; against?: Stance }
   isCrux: boolean
+  evidenceCount: number
+  commentCount: number
   selected: boolean
 }
 export type GroupNodeData = {
@@ -38,7 +40,7 @@ function StanceChip({ side, stance }: { side: 'F' | 'A'; stance?: Stance }) {
 }
 
 export function ClaimNode({ data }: NodeProps<ClaimNodeType>) {
-  const { claim, role, stances, isCrux, selected } = data
+  const { claim, role, stances, isCrux, evidenceCount, commentCount, selected } = data
   return (
     <div className={`claim-node ${role}${selected ? ' selected' : ''}`}>
       <Handle type="target" position={Position.Bottom} isConnectable={false} />
@@ -50,6 +52,16 @@ export function ClaimNode({ data }: NodeProps<ClaimNodeType>) {
         <StanceChip side="A" stance={stances.against} />
         {isCrux && <span className="badge crux">Crux</span>}
         {claim.subDebateId && <span className="badge fork">⑂ Sub-debate</span>}
+        {evidenceCount > 0 && (
+          <span className="count" title={`${evidenceCount} ${evidenceCount === 1 ? 'source' : 'sources'}`}>
+            ⧉ {evidenceCount}
+          </span>
+        )}
+        {commentCount > 0 && (
+          <span className="count" title={`${commentCount} ${commentCount === 1 ? 'comment' : 'comments'}`}>
+            ✎ {commentCount}
+          </span>
+        )}
         {claim.source && (
           <span className="badge time" title={`${claim.source.speaker ?? 'Transcript'}: “${claim.source.quote}”`}>
             {claim.source.start !== null ? `▶ ${formatTime(claim.source.start)}` : '“ ”'}

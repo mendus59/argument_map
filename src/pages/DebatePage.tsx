@@ -7,6 +7,7 @@ import { InviteButton } from '../components/InviteButton'
 import { ImportedDebate } from './ImportedDebate'
 import { DebateView } from '../components/DebateView'
 import { EditPanel } from '../components/EditPanel'
+import { RestateSetting } from '../components/HonestPanels'
 import type { Selection } from '../map/ArgumentMap'
 import type { Debate, DebateMap, SideId } from '../model/types'
 
@@ -67,6 +68,12 @@ function TeamPanel({ debate }: { debate: Debate }) {
           <InviteButton debate={debate} role="member" side={me.side} label="Invite a teammate" />
           <InviteButton debate={debate} role="reader" side={null} label="Invite a reader" />
           <p className="small muted">Each link works once. Send it to one person.</p>
+        </div>
+      )}
+      {me.leader && (
+        <div className="stack-xs">
+          <span className="eyebrow">Debate settings</span>
+          <RestateSetting debate={debate} />
         </div>
       )}
     </section>

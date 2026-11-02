@@ -15,7 +15,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore'
 import type { User } from 'firebase/auth'
-import type { Claim, Debate, DebateMap, Link, SideId, Stance } from '../model/types'
+import type { Claim, Comment, Debate, DebateMap, Evidence, Link, SideId, Stance } from '../model/types'
 
 export type InviteRole = 'leader' | 'member' | 'reader'
 
@@ -111,7 +111,9 @@ export function watchDebateMap(db: Firestore, debateId: string, onChange: (map: 
   let claims: Claim[] = []
   let links: Link[] = []
   let stances: Stance[] = []
-  const emit = () => onChange(debate ? { debate, claims, links, stances } : null)
+  let evidence: Evidence[] = []
+  let comments: Comment[] = []
+  const emit = () => onChange(debate ? { debate, claims, links, stances, evidence, comments } : null)
 
   const unsubs = [
     onSnapshot(
@@ -142,6 +144,24 @@ export function watchDebateMap(db: Firestore, debateId: string, onChange: (map: 
       collection(ref, 'stances'),
       (snap) => {
         stances = snap.docs.map((d) => d.data() as Stance)
+        emit()
+      },
+      onError,
+    ),
+    onSnapshot(
+      collection(ref, 'evidence'),
+      (snap) => {
+        evidence = snap.docs.map((d) => ({ ...(d.data() as Omit<Evidence, 'id'>), id: d.id }))
+        emit()
+      },
+      onError,
+    ),
+    onSnapshot(
+      collection(ref, 'comments'),
+      (snap) => {
+        comments = snap.docs
+          .map((d) => ({ ...(d.data() as Omit<Comment, 'id'>), id: d.id }))
+          .sort((a, b) => (a.createdAt?.toMillis() ?? Infinity) - (b.createdAt?.toMillis() ?? Infinity))
         emit()
       },
       onError,
