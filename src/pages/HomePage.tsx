@@ -23,6 +23,9 @@ export default function HomePage() {
           <Link className="btn" to="/sample">
             See a sample debate
           </Link>
+          <Link className="btn" to="/library">
+            Browse mapped debates
+          </Link>
         </div>
       </div>
     )

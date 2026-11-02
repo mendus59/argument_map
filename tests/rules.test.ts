@@ -24,7 +24,7 @@ import {
 import type { User } from 'firebase/auth'
 import { acceptInvite, createDebate, createInvite, getInvite, roleIn } from '../src/data/debates'
 import { addArgument, addNote, editClaim, placeNote, setStance } from '../src/data/map'
-import { CHUNK, createImport, loadTranscript, setVisibility } from '../src/data/imports'
+import { CHUNK, createImport, loadTranscript, searchPublic, searchTermsFor, setVisibility } from '../src/data/imports'
 import type { Debate } from '../src/model/types'
 
 let env: RulesTestEnvironment
@@ -404,5 +404,19 @@ describe('admin import', () => {
     expect(await loadTranscript(db(null), id)).toHaveLength(segments.length)
     await assertSucceeds(getDocs(query(collection(db(null), 'debates'), where('visibility', '==', 'public'))))
     await assertFails(setDoc(doc(db('rita'), `debates/${id}/transcript/0000`), { index: 0, segments: [] }))
+  })
+
+  it('finds public debates by participant or subject, and never private ones', async () => {
+    const shown = await createImport(db('pat'), patrick, { ...input, source: { ...input.source, speakers: [{ label: 'Jane Smith', side: 'for' }] } })
+    await createImport(db('pat'), patrick, { ...input, title: 'Still private' })
+    await setVisibility(db('pat'), shown, 'public')
+    expect((await searchPublic(db(null), '')).map((d) => d.id)).toEqual([shown])
+    expect((await searchPublic(db(null), 'SMITH')).map((d) => d.id)).toEqual([shown])
+    expect((await searchPublic(db(null), 'Transit')).map((d) => d.id)).toEqual([shown])
+    expect(await searchPublic(db(null), 'mayor')).toEqual([])
+  })
+
+  it('builds search terms from whole names and their words', () => {
+    expect(searchTermsFor(['Jane Smith'], ['City budget'])).toEqual(['jane smith', 'city budget', 'jane', 'smith', 'city', 'budget'])
   })
 })

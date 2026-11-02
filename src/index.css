@@ -199,3 +199,15 @@ textarea.input.mono { font-size: 12.5px; }
 .quote-bar { position: absolute; left: 10px; right: 10px; bottom: 10px; background: var(--surface); border: 1.5px solid var(--accent); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); }
 .source-quote { margin: 0; padding: 8px 10px; border-left: 3px solid var(--line); background: var(--surface); border-radius: 0 6px 6px 0; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
 .badge.time { background: var(--muted); }
+
+/* Library */
+.nav-link { color: var(--muted); text-decoration: none; font-weight: 600; }
+.nav-link:hover { color: var(--accent); }
+.library-item { flex-direction: row; align-items: flex-start; gap: 14px; }
+.library-item .debate-item-title { color: var(--ink); text-decoration: none; }
+.library-item .debate-item-title:hover { color: var(--accent); text-decoration: underline; }
+.lib-thumb { width: 128px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; background: var(--sunk); flex-shrink: 0; }
+@media (max-width: 520px) { .library-item { flex-direction: column; } .lib-thumb { width: 100%; } }
+.tag-btn { font: inherit; font-size: 12px; border: 0; cursor: pointer; }
+.tag-btn:hover { outline: 1px solid var(--accent); }
+input.input[type="search"] { padding: 9px 11px; font-size: 15px; }
