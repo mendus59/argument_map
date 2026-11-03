@@ -252,3 +252,17 @@ input.input[type="search"] { padding: 9px 11px; font-size: 15px; }
 .activity li.against { border-left-color: var(--dis); }
 .activity li.fresh { background: var(--unsure-soft); border-radius: 0 6px 6px 0; }
 .activity .linklike { text-align: left; }
+
+/* Sub-debates (milestone 5) */
+.badge.settled, .badge.outcome-accepted { background: var(--agree); }
+.badge.outcome-rejected { background: var(--dis); }
+.badge.outcome-disputed { background: var(--unsure); }
+.crumbs { display: flex; flex-wrap: wrap; gap: 2px; }
+.crumbs a { color: var(--muted); }
+.crumbs a:hover { color: var(--accent); }
+.outcome.done.accepted { border-color: var(--agree); }
+.outcome.done.rejected { border-color: var(--dis); }
+.outcome.done.disputed { border-color: var(--unsure); }
+.vote-list { margin: 0; padding-left: 18px; }
+.tree { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.tree .here { font-weight: 700; color: var(--ink); }

@@ -42,6 +42,10 @@ export interface Debate {
   /** The debate's conclusion. For a sub-debate this points at the forked claim in the parent. */
   conclusion: ClaimRef
   parent: ClaimRef | null
+  /** For a sub-debate, the top-level debate whose teams it shares. */
+  root?: string | null
+  /** Sub-debates forked from boxes in this debate, by id. */
+  subDebates?: Record<string, { claimId: string; title: string }>
   status: 'open' | 'resolved'
   outcome: Outcome | null
   outcomeVotes: Partial<Record<SideId, Outcome>>
