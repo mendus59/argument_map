@@ -266,3 +266,7 @@ input.input[type="search"] { padding: 9px 11px; font-size: 15px; }
 .vote-list { margin: 0; padding-left: 18px; }
 .tree { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .tree .here { font-weight: 700; color: var(--ink); }
+
+/* AI assist */
+.badge.ai { background: var(--sunk); color: var(--muted); font-weight: 600; letter-spacing: .04em; }
+.ai-list { list-style: none; padding: 0; margin: 0; }

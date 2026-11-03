@@ -13,6 +13,7 @@
     "emulators": "firebase emulators:start --only auth,firestore --project demo-parrhesia"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.4.0",
     "@xyflow/react": "^12.12.1",
     "firebase": "^12.19.0",
     "react": "^19.1.0",

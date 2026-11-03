@@ -29,6 +29,7 @@ import { endRound, startRound } from '../src/data/live'
 import { forkClaim, voteOutcome } from '../src/data/subdebates'
 import { watchDebateMap } from '../src/data/debates'
 import { CHUNK, createImport, loadTranscript, searchPublic, searchTermsFor, setVisibility } from '../src/data/imports'
+import { acceptSuggestion, dismissSuggestion, getBudget, publishSummary, recordSpend, saveAnalysis, setCap } from '../src/data/ai'
 import type { Debate, DebateMap } from '../src/model/types'
 
 let env: RulesTestEnvironment
@@ -418,6 +419,54 @@ describe('admin import', () => {
     expect((await searchPublic(db(null), 'SMITH')).map((d) => d.id)).toEqual([shown])
     expect((await searchPublic(db(null), 'Transit')).map((d) => d.id)).toEqual([shown])
     expect(await searchPublic(db(null), 'mayor')).toEqual([])
+  })
+
+  it('keeps AI analyses and the AI budget to the admin, and accepts suggestions onto the map', async () => {
+    const ana = user('ana', 'Ana')
+    const id = await createImport(db('pat'), patrick, input)
+    const d = (await getDoc(doc(db('pat'), `debates/${id}`))).data() as Debate
+    const target = d.conclusion.claimId
+    const linkId = await addArgument(db('pat'), patrick, id, 'for', 'reason', target, [{ text: 'Fares cost more to collect than they raise.', type: 'fact' }])
+
+    // Budget: the admin's own, nobody else's.
+    await assertSucceeds(setCap(db('pat'), 'pat', 25))
+    await assertSucceeds(recordSpend(db('pat'), 'pat', '2026-11', 0.4))
+    await assertSucceeds(recordSpend(db('pat'), 'pat', '2026-11', 0.1))
+    const budget = await getBudget(db('pat'), 'pat', '2026-11')
+    expect(budget.capUsd).toBe(25)
+    expect(budget.spentUsd).toBeCloseTo(0.5)
+    expect(budget.runs).toBe(2)
+    await assertFails(getDoc(doc(db('ana'), 'users/pat/ai/settings')))
+    await assertFails(setCap(db('ana'), 'ana', 1000))
+
+    const result = {
+      summary: { overall: 'It turned on cost.', for: 'Free buses pay for themselves.', against: 'They do not.' },
+      suggestions: [
+        { kind: 'hidden_premise' as const, side: 'for' as const, targetClaimId: target, linkId, text: 'Money saved is better spent on service.', explanation: 'Needed to reach the conclusion.', segment: null, relation: 'reason' as const },
+        { kind: 'missed_argument' as const, side: 'against' as const, targetClaimId: target, linkId: null, text: 'Free buses get crowded.', explanation: 'Said at line 4.', segment: 4, relation: 'objection' as const },
+        { kind: 'fallacy' as const, side: 'for' as const, targetClaimId: target, linkId: null, text: 'Appeal to popularity', explanation: 'Popular is not the same as right.', segment: null, relation: 'reason' as const },
+      ],
+    }
+    const run = { model: 'claude-opus-5-5', inputTokens: 1000, outputTokens: 500, costUsd: 0.014 }
+    await assertFails(saveAnalysis(db('ana'), ana, id, run, result))
+    const aid = await assertSucceeds(saveAnalysis(db('pat'), patrick, id, run, result))
+    await assertFails(getDoc(doc(db('ana'), `debates/${id}/analyses/${aid}`)))
+
+    for (const [i, s] of result.suggestions.entries()) await assertSucceeds(acceptSuggestion(db('pat'), patrick, id, aid, i, s, segments))
+    const link = (await getDoc(doc(db('pat'), `debates/${id}/links/${linkId}`))).data()!
+    expect(link.premiseClaimIds).toHaveLength(2)
+    const claims = (await getDocs(collection(db('pat'), `debates/${id}/claims`))).docs.map((c) => c.data())
+    expect(claims.filter((c) => c.aiSuggested)).toHaveLength(2)
+    expect(claims.find((c) => c.text === 'Free buses get crowded.')?.source?.quote).toBe('Line 4')
+    const comments = (await getDocs(collection(db('pat'), `debates/${id}/comments`))).docs.map((c) => c.data())
+    expect(comments[0].text).toContain('appeal to popularity')
+    const review = (await getDoc(doc(db('pat'), `debates/${id}/analyses/${aid}`))).data()!.review
+    expect(review).toEqual({ 0: 'accepted', 1: 'accepted', 2: 'accepted' })
+    await assertSucceeds(dismissSuggestion(db('pat'), id, aid, 0))
+
+    await assertFails(publishSummary(db('ana'), id, result.summary))
+    await assertSucceeds(publishSummary(db('pat'), id, result.summary))
+    expect(((await getDoc(doc(db('pat'), `debates/${id}`))).data() as Debate).aiSummary?.for).toBe('Free buses pay for themselves.')
   })
 
   it('builds search terms from whole names and their words', () => {
