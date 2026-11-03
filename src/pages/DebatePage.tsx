@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { db } from '../firebase'
@@ -8,6 +8,9 @@ import { ImportedDebate } from './ImportedDebate'
 import { DebateView } from '../components/DebateView'
 import { EditPanel } from '../components/EditPanel'
 import { RestateSetting } from '../components/HonestPanels'
+import { ActivityFeed, PresenceChips, RoundBadge, RoundControls } from '../components/LivePanels'
+import { useLastVisit, usePresence } from '../data/live'
+import { buildActivity } from '../model/activity'
 import type { Selection } from '../map/ArgumentMap'
 import type { Debate, DebateMap, SideId } from '../model/types'
 
@@ -17,6 +20,21 @@ export default function DebatePage() {
   const [error, setError] = useState<string | null>(null)
   const [selection, setSelection] = useState<Selection>(null)
   const { user } = useAuth()
+  const native = map?.debate.origin === 'native'
+  const me = map && user ? roleIn(map.debate, user.uid) : null
+  const { online, setEditing } = usePresence(db, id, native ? user : null, me?.side ?? null)
+  const lastVisit = useLastVisit(db, id, native ? user : null)
+
+  // Boxes the others changed since this viewer last looked.
+  const highlight = useMemo(() => {
+    if (!map || typeof lastVisit !== 'number') return undefined
+    return new Set(buildActivity(map).filter((i) => i.at > lastVisit && i.who !== user?.uid).flatMap((i) => i.touched))
+  }, [map, lastVisit, user])
+  const writers = useMemo(() => {
+    const m = new Map<string, string[]>()
+    for (const p of online) if (p.editing) m.set(p.editing, [...(m.get(p.editing) ?? []), p.name.split(' ')[0]])
+    return m
+  }, [online])
 
   useEffect(
     () =>
@@ -38,11 +56,29 @@ export default function DebatePage() {
       eyebrow="Debate"
       selection={selection}
       onSelect={setSelection}
-      panel={
+      highlight={highlight}
+      writers={writers}
+      badges={
         <>
-          {user && role && <EditPanel map={map} selection={selection} user={user} role={role} onSelect={setSelection} />}
-          <TeamPanel debate={map.debate} />
+          <RoundBadge debate={map.debate} />
+          <PresenceChips map={map} online={online} />
         </>
+      }
+      panel={
+        // Tells the others which box you're writing under while a text box has focus.
+        <div
+          className="stack"
+          onFocus={(e) => {
+            if (e.target instanceof HTMLTextAreaElement) setEditing(selection?.kind === 'claim' ? selection.id : null)
+          }}
+          onBlur={(e) => {
+            if (e.target instanceof HTMLTextAreaElement) setEditing(null)
+          }}
+        >
+          {user && role && <EditPanel map={map} selection={selection} user={user} role={role} onSelect={setSelection} />}
+          {!selection && <ActivityFeed map={map} lastVisit={user ? lastVisit : undefined} me={user?.uid} onSelect={setSelection} />}
+          <TeamPanel debate={map.debate} />
+        </div>
       }
     />
   )
@@ -75,6 +111,9 @@ function TeamPanel({ debate }: { debate: Debate }) {
           <span className="eyebrow">Debate settings</span>
           <RestateSetting debate={debate} />
         </div>
+      )}
+      {me.leader && user && (
+        <RoundControls debate={debate} user={user} />
       )}
     </section>
   )

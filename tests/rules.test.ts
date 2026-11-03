@@ -25,6 +25,7 @@ import type { User } from 'firebase/auth'
 import { acceptInvite, createDebate, createInvite, getInvite, roleIn } from '../src/data/debates'
 import { addArgument, addNote, editClaim, placeNote, setStance } from '../src/data/map'
 import { addComment, addEvidence, objectWithRestatement, removeEvidence, respondToRestatement, setRestateFirst } from '../src/data/honest'
+import { endRound, startRound } from '../src/data/live'
 import { CHUNK, createImport, loadTranscript, searchPublic, searchTermsFor, setVisibility } from '../src/data/imports'
 import type { Debate } from '../src/model/types'
 
@@ -479,5 +480,45 @@ describe('honest-debate tools (milestone 3)', () => {
   it('lets a leader turn restate-first off, but not a reader', async () => {
     await assertSucceeds(setRestateFirst(db('ben'), 'd1', false))
     await assertFails(setRestateFirst(db('rita'), 'd1', true))
+  })
+})
+
+describe('live and async (milestone 4)', () => {
+  const user = (uid: string, name: string) => ({ uid, displayName: name, photoURL: null, email: null }) as unknown as User
+  const presence = (name: string, side: string | null) => ({ name, side, at: serverTimestamp(), editing: null })
+
+  beforeEach(async () => {
+    await seedDebate()
+    await setDoc(doc(db('ana'), 'invites/t-lead'), invite('ana', 'leader', 'against'))
+    await setDoc(doc(db('ana'), 'invites/t-read'), invite('ana', 'reader', null))
+    await join('ben', 't-lead', 'leader', 'against')
+    await join('rita', 't-read', 'reader', null)
+  })
+
+  it('lets participants mark only themselves present', async () => {
+    await assertSucceeds(setDoc(doc(db('ben'), 'debates/d1/presence/ben'), presence('Ben', 'against')))
+    await assertSucceeds(setDoc(doc(db('rita'), 'debates/d1/presence/rita'), presence('Rita', null)))
+    await assertFails(setDoc(doc(db('ben'), 'debates/d1/presence/ana'), presence('Ana', 'for')))
+    await assertFails(setDoc(doc(db('zed'), 'debates/d1/presence/zed'), presence('Zed', null)))
+    await assertFails(setDoc(doc(db('ben'), 'debates/d1/presence/ben'), { ...presence('Ben', 'against'), admin: true }))
+    await assertSucceeds(updateDoc(doc(db('ben'), 'debates/d1/presence/ben'), { editing: 'c' }))
+    expect((await getDocs(collection(db('ana'), 'debates/d1/presence'))).size).toBe(2)
+    await assertFails(getDocs(collection(db('zed'), 'debates/d1/presence')))
+  })
+
+  it('keeps visit times private to each user', async () => {
+    await assertSucceeds(setDoc(doc(db('ana'), 'users/ana/visits/d1'), { at: serverTimestamp() }))
+    await assertSucceeds(getDoc(doc(db('ana'), 'users/ana/visits/d1')))
+    await assertFails(getDoc(doc(db('ben'), 'users/ana/visits/d1')))
+    await assertFails(setDoc(doc(db('ben'), 'users/ana/visits/d1'), { at: serverTimestamp() }))
+  })
+
+  it('lets leaders run timed rounds, but not readers', async () => {
+    const debate = { ...((await getDoc(doc(db('ana'), 'debates/d1'))).data() as Debate), id: 'd1' }
+    await assertSucceeds(startRound(db('ben'), debate, user('ben', 'Ben'), 'against', 5))
+    const after = (await getDoc(doc(db('ana'), 'debates/d1'))).data() as Debate
+    expect(after.round).toMatchObject({ number: 1, side: 'against', minutes: 5 })
+    await assertFails(startRound(db('rita'), debate, user('rita', 'Rita'), 'for', 5))
+    await assertSucceeds(endRound(db('ana'), debate))
   })
 })

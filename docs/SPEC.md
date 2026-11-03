@@ -72,6 +72,7 @@ debates/{debateId}
   status: 'open' | 'resolved'
   outcome: 'accepted' | 'rejected' | 'disputed' | null
   outcomeVotes: { for?: Outcome, against?: Outcome }
+  round?: { number, side, minutes, endsAt, startedBy } | null   // optional timed round, a guide only
   unresolvedDepth: number                   // kept up to date on fork and resolve
   source?: { kind: 'transcript' | 'youtube', url, videoId, title, channel, speakers: [{ label, side }], segmentCount }
   createdAt, updatedAt
@@ -87,12 +88,13 @@ debates/{id}/stances/{targetId}__{side}
 debates/{id}/stanceHistory/{autoId}   targetId, side, from, to, conceded, by, at
 debates/{id}/comments/{autoId} targetId, authorUid, side, kind: 'comment' | 'restatement', text, status?: 'pending' | 'confirmed' | 'disputed', reply?, respondedBy?, createdAt
 debates/{id}/evidence/{autoId} claimId, url, title, kind: 'study' | 'data' | 'news' | 'anecdote' | 'opinion', addedBy, side
-debates/{id}/activity/{autoId} feed events for async catch-up
+debates/{id}/presence/{uid}    name, side, at, editing      // heartbeat every 45 s while the tab is open
+users/{uid}/visits/{debateId}  at                           // last visit, for "new since you last looked"
 admin/aiBudget                 monthlyTokenCap, usedThisMonth, monthKey
 admin/aiRuns/{autoId}          debateId, tasks[], estimatedTokens, usedTokens, at
 ```
 
-Live presence ("3 online", "Ben is writing") uses Firebase Realtime Database, which handles disconnects cheaply. Everything else is Firestore with live listeners, which also gives async catch-up for free.
+Live presence ("Ben online", "Ben writing…") uses Firestore heartbeats rather than Realtime Database, so no extra service needs setting up. The activity feed is rebuilt in the browser from the debate's own timestamped data, so nothing extra is written for it.
 
 Public search uses `searchTerms[]` (lower-cased participant names and subjects) with `array-contains` queries. That is enough for "by participant or subject" without a paid search service.
 
@@ -128,7 +130,7 @@ Security rules enforce: only authors edit claim text; only a side's leader write
 | 1 | Accounts and debates | Firebase Auth, create debate, invite other leader, members, readers, security rules |
 | 2 | Map editing (done) | Claims, links, co-premise groups, unplaced notes, automatic layout, stances, inference check |
 | 3 | Honest-debate tools (done) | Comments, restate before rebut, sources, crux highlighting, map check, stance history |
-| 4 | Async and live | Live listeners, presence, activity feed, optional timed rounds |
+| 4 | Async and live (done) | Live listeners, presence, activity feed, optional timed rounds |
 | 5 | Sub-debates | Fork, shared stances, outcomes, unresolved depth, settled references, breadcrumbs and tree |
 | 6 | Admin import (done) | YouTube link and pasted transcript, speakers to sides, select-to-map with timestamps, video seek, visibility, reader invites. Public library with search by participant or subject |
 | 7 | AI and YouTube | Cloud Functions, AI assist review queue, budget cap, YouTube captions and transcription |

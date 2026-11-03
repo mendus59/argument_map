@@ -20,6 +20,8 @@ export function DebateView({
   panel,
   source,
   badges,
+  highlight,
+  writers,
   selection,
   onSelect,
 }: {
@@ -30,6 +32,8 @@ export function DebateView({
   source?: ReactNode
   /** Extra tags beside the sides in the header. */
   badges?: ReactNode
+  highlight?: Set<string>
+  writers?: Map<string, string[]>
   selection?: Selection
   onSelect?: (s: Selection) => void
 }) {
@@ -57,7 +61,7 @@ export function DebateView({
       </header>
       <main className={`workspace${source ? ' with-source' : ''}`}>
         {source}
-        <ArgumentMap map={map} selection={selection} onSelect={onSelect} />
+        <ArgumentMap map={map} selection={selection} onSelect={onSelect} highlight={highlight} writers={writers} />
         <aside className="side-panel">
           {panel}
           {notes.length > 0 && (

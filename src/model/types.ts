@@ -47,10 +47,21 @@ export interface Debate {
   outcomeVotes: Partial<Record<SideId, Outcome>>
   unresolvedDepth: number
   settings?: DebateSettings
+  /** Optional timed round. Informational: nothing stops the other side posting. */
+  round?: Round | null
   /** Where an imported debate came from. */
   source?: DebateSource
   /** Lower-cased participant names and subjects, for searching public debates. */
   searchTerms?: string[]
+}
+
+export interface Round {
+  number: number
+  side: SideId
+  minutes: number
+  /** Milliseconds since the epoch. */
+  endsAt: number
+  startedBy: string
 }
 
 export interface DebateSettings {
@@ -104,6 +115,7 @@ export interface Link {
   premiseClaimIds: string[]
   authorUid: string
   side: SideId
+  createdAt?: Time
 }
 
 export interface Stance {
@@ -143,6 +155,7 @@ export interface Comment {
   status?: 'pending' | 'confirmed' | 'disputed'
   reply?: string | null
   respondedBy?: string | null
+  respondedAt?: Time
   createdAt?: Time
 }
 
