@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { db } from '../firebase'
 import { roleIn, watchDebateMap } from '../data/debates'
@@ -11,6 +11,10 @@ import { RestateSetting } from '../components/HonestPanels'
 import { ActivityFeed, PresenceChips, RoundBadge, RoundControls } from '../components/LivePanels'
 import { useLastVisit, usePresence } from '../data/live'
 import { buildActivity } from '../model/activity'
+import { watchTree } from '../data/subdebates'
+import { ancestors, settledClaims, subStatusByClaim, treeBelow } from '../model/tree'
+import { unresolvedDepth } from '../model/depth'
+import { Crumbs, OutcomePanel, TreePanel } from '../components/SubDebatePanels'
 import type { Selection } from '../map/ArgumentMap'
 import type { Debate, DebateMap, SideId } from '../model/types'
 
@@ -36,6 +40,21 @@ export default function DebatePage() {
     return m
   }, [online])
 
+  // The whole tree this debate belongs to, for depth, breadcrumbs and settled claims.
+  const rootId = map ? (map.debate.root ?? map.debate.id) : null
+  const [tree, setTree] = useState<Map<string, Debate>>(new Map())
+  useEffect(() => (rootId && native ? watchTree(db, rootId, setTree) : undefined), [rootId, native])
+  const treeInfo = useMemo(
+    () => ({
+      subs: subStatusByClaim(tree, id),
+      settled: settledClaims(tree),
+      depth: tree.has(id) ? unresolvedDepth(id, tree) : undefined,
+      chain: ancestors(tree, id),
+      below: treeBelow(tree, rootId ?? id),
+    }),
+    [tree, id, rootId],
+  )
+
   useEffect(
     () =>
       watchDebateMap(db, id, setMap, (e) => {
@@ -58,6 +77,9 @@ export default function DebatePage() {
       onSelect={setSelection}
       highlight={highlight}
       writers={writers}
+      subs={treeInfo.subs}
+      depth={treeInfo.depth}
+      crumbs={treeInfo.chain.length ? <Crumbs chain={treeInfo.chain} /> : undefined}
       badges={
         <>
           <RoundBadge debate={map.debate} />
@@ -75,7 +97,9 @@ export default function DebatePage() {
             if (e.target instanceof HTMLTextAreaElement) setEditing(null)
           }}
         >
-          {user && role && <EditPanel map={map} selection={selection} user={user} role={role} onSelect={setSelection} />}
+          {map.debate.root && !selection && <OutcomePanel debate={map.debate} user={user} />}
+          {user && role && <EditPanel map={map} selection={selection} user={user} role={role} onSelect={setSelection} tree={treeInfo} />}
+          {!selection && <TreePanel nodes={treeInfo.below} current={id} />}
           {!selection && <ActivityFeed map={map} lastVisit={user ? lastVisit : undefined} me={user?.uid} onSelect={setSelection} />}
           <TeamPanel debate={map.debate} />
         </div>
@@ -92,6 +116,17 @@ function TeamPanel({ debate }: { debate: Debate }) {
   const me = roleIn(debate, user.uid)
   const myRole = me.reader ? 'You can read this debate.' : me.side ? `You’re on the ${debate.sides[me.side].label} side${me.leader ? ' and lead it' : ''}.` : ''
 
+  if (debate.root) {
+    return (
+      <section className="stack-xs">
+        <span className="eyebrow">Your team</span>
+        <p className="small">{myRole}</p>
+        <p className="small muted">
+          Teams, invites and settings are shared with the <Link to={`/d/${debate.root}`}>top-level debate</Link>.
+        </p>
+      </section>
+    )
+  }
   return (
     <section className="stack-sm">
       <span className="eyebrow">Your team</span>

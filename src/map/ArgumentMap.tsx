@@ -4,7 +4,7 @@ import '@xyflow/react/dist/style.css'
 import type { DebateMap } from '../model/types'
 import { findCruxes, stanceOf } from '../model/crux'
 import { layoutMap, CLAIM_W } from './layout'
-import { ClaimNode, GroupNode, type ClaimNodeType, type GroupNodeType } from './nodes'
+import { ClaimNode, GroupNode, type ClaimNodeType, type GroupNodeType, type SubStatus } from './nodes'
 
 const nodeTypes = { claim: ClaimNode, premiseGroup: GroupNode }
 
@@ -19,6 +19,8 @@ type Props = {
   highlight?: Set<string>
   /** Names of people writing under each box right now. */
   writers?: Map<string, string[]>
+  /** Sub-debates forked from boxes on this map, by claim id. */
+  subs?: Map<string, SubStatus>
 }
 
 export function ArgumentMap(props: Props) {
@@ -39,7 +41,7 @@ function FitOnGrowth({ count }: { count: number }) {
   return null
 }
 
-function MapCanvas({ map, selection, onSelect, highlight, writers }: Props) {
+function MapCanvas({ map, selection, onSelect, highlight, writers, subs }: Props) {
   const { nodes, edges } = useMemo(() => {
     const layout = layoutMap(map)
     const cruxes = findCruxes(map)
@@ -74,6 +76,7 @@ function MapCanvas({ map, selection, onSelect, highlight, writers }: Props) {
         selected: selection?.kind === 'claim' && selection.id === p.claim.id,
         isNew: !!highlight?.has(p.claim.id),
         writers: writers?.get(p.claim.id) ?? [],
+        sub: subs?.get(p.claim.id),
       },
       style: { width: CLAIM_W },
       draggable: false,
@@ -92,7 +95,7 @@ function MapCanvas({ map, selection, onSelect, highlight, writers }: Props) {
       }
     })
     return { nodes: [...groups, ...claims], edges }
-  }, [map, selection, highlight, writers])
+  }, [map, selection, highlight, writers, subs])
 
   return (
     <div className="map-canvas">

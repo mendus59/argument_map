@@ -6,6 +6,11 @@ import { stanceOf } from '../model/crux'
 import type { Claim, ClaimSource, ClaimType, DebateMap, Link, SideId, Stance, StanceValue } from '../model/types'
 import { formatTime } from '../import/transcript'
 import { objectWithRestatement } from '../data/honest'
+import { stanceHome } from '../data/subdebates'
+import { ForkSection } from './SubDebatePanels'
+import type { SubStatus } from '../map/nodes'
+import type { SettledClaim } from '../model/tree'
+import { Link as RouterLink } from 'react-router-dom'
 import { CommentThread, EvidenceSection, MapCheckPanel, StanceHistory } from './HonestPanels'
 import type { Selection } from '../map/ArgumentMap'
 
@@ -29,6 +34,12 @@ export interface SourceProps {
   onSeek?: (seconds: number) => void
 }
 
+/** Sub-debate context: status of forked boxes, and settled claims that can be cited. */
+export interface TreeProps {
+  subs: Map<string, SubStatus>
+  settled: SettledClaim[]
+}
+
 export function EditPanel({
   map,
   selection,
@@ -36,6 +47,7 @@ export function EditPanel({
   role,
   onSelect,
   source,
+  tree,
 }: {
   map: DebateMap
   selection: Selection
@@ -43,6 +55,7 @@ export function EditPanel({
   role: Role
   onSelect: (s: Selection) => void
   source?: SourceProps
+  tree?: TreeProps
 }) {
   const claim = selection?.kind === 'claim' ? map.claims.find((c) => c.id === selection.id) : undefined
   const link = selection?.kind === 'link' ? map.links.find((l) => l.id === selection.id) : undefined
@@ -59,7 +72,7 @@ export function EditPanel({
         </p>
       )}
       {!claim && !link && <MapCheckPanel map={map} onSelect={onSelect} />}
-      {claim && <ClaimPanel key={`${claim.id}-${role.side}`} map={map} claim={claim} user={user} role={role} onSelect={onSelect} source={source} />}
+      {claim && <ClaimPanel key={`${claim.id}-${role.side}`} map={map} claim={claim} user={user} role={role} onSelect={onSelect} source={source} tree={tree} />}
       {link && <LinkPanel key={link.id} map={map} link={link} role={role} user={user} />}
       {role.side && <NoteComposer key={role.side} debateId={map.debate.id} user={user} side={role.side} source={source} />}
     </div>
@@ -115,6 +128,7 @@ function ClaimPanel({
   role,
   onSelect,
   source,
+  tree,
 }: {
   map: DebateMap
   claim: Claim
@@ -122,7 +136,10 @@ function ClaimPanel({
   role: Role
   onSelect: (s: Selection) => void
   source?: SourceProps
+  tree?: TreeProps
 }) {
+  // In a sub-debate the conclusion is the parent's box: its sources and discussion stay there.
+  const borrowed = claim.id === map.debate.conclusion.claimId && map.debate.conclusion.debateId !== map.debate.id
   const [editing, setEditing] = useState(false)
   const isConclusion = claim.id === map.debate.conclusion.claimId
   const notes = map.claims.filter((c) => !c.placed)
@@ -161,7 +178,20 @@ function ClaimPanel({
           concedable={claim.side !== role.side && claim.id !== map.debate.conclusion.claimId}
         />
       )}
-      <EvidenceSection map={map} claim={claim} user={user} side={role.side} />
+      {claim.settledRef && (
+        <p className="small">
+          ✓ Settled in a sub-debate. <RouterLink to={`/d/${claim.settledRef.debateId}`}>See where</RouterLink>
+        </p>
+      )}
+      <ForkSection map={map} claim={claim} user={user} side={role.side} sub={tree?.subs.get(claim.id)} />
+      {borrowed ? (
+        <p className="small muted">
+          This is the box being argued. Its sources and discussion are in the{' '}
+          <RouterLink to={`/d/${map.debate.conclusion.debateId}`}>parent debate</RouterLink>.
+        </p>
+      ) : (
+        <EvidenceSection map={map} claim={claim} user={user} side={role.side} />
+      )}
       {role.side && (
         <ArgumentComposer
           map={map}
@@ -170,6 +200,7 @@ function ClaimPanel({
           side={role.side}
           draft={source?.draft ?? null}
           onSeek={source?.onSeek}
+          settled={tree?.settled}
           onAdded={() => {
             source?.onDraftUsed()
             onSelect({ kind: 'claim', id: claim.id })
@@ -194,7 +225,7 @@ function ClaimPanel({
           ))}
         </div>
       )}
-      <CommentThread map={map} targetId={claim.id} user={user} side={role.side} />
+      {!borrowed && <CommentThread map={map} targetId={claim.id} user={user} side={role.side} />}
       <StanceHistory map={map} targetId={claim.id} />
     </section>
   )
@@ -267,7 +298,7 @@ function StanceEditor({
 
   async function save() {
     try {
-      await setStance(db, map.debate.id, targetId, side, value, confidence, { by: uid, from: current })
+      await setStance(db, stanceHome(map, targetId), targetId, side, value, confidence, { by: uid, from: current })
       setState('saved')
     } catch (e) {
       console.error(e)
@@ -308,7 +339,7 @@ function StanceEditor({
   async function concede() {
     const conf = Math.max(confidence, 60)
     try {
-      await setStance(db, map.debate.id, targetId, side, 'agree', conf, { by: uid, from: current, conceded: true })
+      await setStance(db, stanceHome(map, targetId), targetId, side, 'agree', conf, { by: uid, from: current, conceded: true })
       setValue('agree')
       setConfidence(conf)
       setState('saved')
@@ -331,6 +362,7 @@ function ArgumentComposer({
   side,
   draft,
   onSeek,
+  settled,
   onAdded,
 }: {
   map: DebateMap
@@ -339,8 +371,10 @@ function ArgumentComposer({
   side: SideId
   draft?: ClaimSource | null
   onSeek?: (s: number) => void
+  settled?: SettledClaim[]
   onAdded: () => void
 }) {
+  const citable = (settled ?? []).filter((c) => c.outcome === 'accepted' && c.claimId !== target.id)
   const [kind, setKind] = useState<Link['kind']>(defaultKind(map, target, side))
   const [premises, setPremises] = useState<PremiseInput[]>([{ text: '', type: 'unspecified' }])
   const [restatement, setRestatement] = useState('')
@@ -431,8 +465,10 @@ function ArgumentComposer({
             placeholder={i === 0 ? 'State one claim…' : 'And this must also hold…'}
             value={p.text}
             onChange={(e) => update(i, { text: e.target.value })}
+            readOnly={!!p.settledRef}
             aria-label={`Premise ${i + 1}`}
           />
+          {p.settledRef && <span className="small ok">✓ Settled claim, cited as is.</span>}
           {p.source && (
             <span className="small muted">
               From {p.source.speaker ?? 'the transcript'}
@@ -461,6 +497,29 @@ function ArgumentComposer({
         <button className="linklike small" type="button" onClick={() => setPremises((ps) => [...ps, { text: '', type: 'unspecified' }])}>
           + Add a co-premise (all must hold together)
         </button>
+      )}
+      {citable.length > 0 && premises.length < 8 && (
+        <select
+          className="input"
+          value=""
+          aria-label="Cite a settled claim"
+          onChange={(e) => {
+            const c = citable.find((x) => `${x.debateId}/${x.claimId}` === e.target.value)
+            if (!c) return
+            const entry: PremiseInput = { text: c.text, type: 'unspecified', settledRef: { debateId: c.debateId, claimId: c.claimId } }
+            setPremises((ps) => {
+              const empty = ps.findIndex((p) => !p.text.trim())
+              return empty >= 0 ? ps.map((p, i) => (i === empty ? entry : p)) : [...ps, entry]
+            })
+          }}
+        >
+          <option value="">Cite a settled claim (adds no depth)…</option>
+          {citable.map((c) => (
+            <option key={`${c.debateId}/${c.claimId}`} value={`${c.debateId}/${c.claimId}`}>
+              {c.text.length > 90 ? `${c.text.slice(0, 90)}…` : c.text}
+            </option>
+          ))}
+        </select>
       )}
       {looksDouble && <p className="hint">This might be two claims in one. Splitting them into co-premises lets the other side accept one and dispute the other.</p>}
       {!looksDouble && unsourced && <p className="hint">Facts and predictions are stronger with a source. You can post as is.</p>}

@@ -19,6 +19,10 @@ service cloud.firestore {
     function debatePath(debateId) { return /databases/$(database)/documents/debates/$(debateId); }
     function debate(debateId) { return get(debatePath(debateId)).data; }
     function debateAfter(debateId) { return getAfter(debatePath(debateId)).data; }
+    // A sub-debate borrows its teams, readers and visibility from the top-level debate
+    // it belongs to (its root), so joining the root is enough to take part in all of it.
+    function teamOf(d) { return d.get('root', null) == null ? d : get(debatePath(d.root)).data; }
+    function team(debateId) { return teamOf(debate(debateId)); }
 
     function canRead(d) {
       return d.visibility == 'public' || isAdmin() || (signedIn() && uid() in d.participantUids);
@@ -26,6 +30,7 @@ service cloud.firestore {
     function isLeader(d, side) { return signedIn() && d.sides[side].leaderUid == uid(); }
     function isAnyLeader(d) { return isLeader(d, 'for') || isLeader(d, 'against'); }
     function isMemberOf(d, side) { return signedIn() && uid() in d.sides[side].memberUids; }
+    function isAnyMember(d) { return isMemberOf(d, 'for') || isMemberOf(d, 'against'); }
 
     // ---- Users -------------------------------------------------------------
     match /users/{userId} {
@@ -47,10 +52,12 @@ service cloud.firestore {
 
     // ---- Debates -----------------------------------------------------------
     match /debates/{debateId} {
-      allow read: if canRead(resource.data);
+      allow read: if canRead(teamOf(resource.data));
 
       // A signed-in user creates a private debate and leads the side they chose.
       allow create: if signedIn() && validNewDebate(request.resource.data);
+      // Either side forks a box into a sub-debate whose conclusion is that same box.
+      allow create: if signedIn() && validNewSubDebate(request.resource.data, debateId);
       // The admin imports debates. They start private.
       allow create: if isAdmin()
         && request.resource.data.origin == 'imported'
@@ -60,11 +67,47 @@ service cloud.firestore {
       // Leaders maintain the title and subjects. Admin can change anything.
       // Anyone holding an unused invite can join (see joining()).
       allow update: if isAdmin()
-        || (isAnyLeader(resource.data)
+        || (isAnyLeader(teamOf(resource.data))
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'subjects', 'settings', 'round', 'updatedAt']))
+        // Any debater lists a new sub-debate on the debate it was forked from.
+        || (isAnyMember(teamOf(resource.data))
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['subDebates', 'updatedAt']))
+        // Each leader records an outcome for a sub-debate; it resolves when they match.
+        || (resource.data.get('root', null) != null && outcomeVote(teamOf(resource.data), resource.data, request.resource.data))
         || joining(debateId);
 
       allow delete: if isAdmin();
+
+      function validNewSubDebate(d, id) {
+        let parentDoc = get(debatePath(d.parent.debateId)).data;
+        let rootId = parentDoc.get('root', null) == null ? d.parent.debateId : parentDoc.root;
+        let t = get(debatePath(rootId)).data;
+        let claim = getAfter(/databases/$(database)/documents/debates/$(d.parent.debateId)/claims/$(d.parent.claimId)).data;
+        return d.keys().hasOnly(['title', 'subjects', 'origin', 'visibility', 'root', 'parent', 'conclusion', 'createdBy', 'creatorSide',
+                                 'status', 'outcome', 'outcomeVotes', 'unresolvedDepth', 'subDebates', 'createdAt', 'updatedAt'])
+          && d.root == rootId
+          && t.origin == 'native'
+          && d.origin == 'native'
+          && d.createdBy == uid()
+          && validSide(d.creatorSide)
+          && uid() in t.sides[d.creatorSide].memberUids
+          && d.conclusion == d.parent
+          && claim.placed == true
+          && claim.subDebateId == id
+          && d.title is string && d.title.size() > 0 && d.title.size() <= 1000
+          && d.status == 'open' && d.outcome == null && d.outcomeVotes == {} && d.subDebates == {};
+      }
+
+      function outcomeVote(t, before, after) {
+        let side = isLeader(t, 'for') ? 'for' : 'against';
+        let votes = after.outcomeVotes;
+        return isLeader(t, side)
+          && after.diff(before).affectedKeys().hasOnly(['outcomeVotes', 'status', 'outcome', 'updatedAt'])
+          && votes.diff(before.outcomeVotes).affectedKeys().hasOnly([side])
+          && votes[side] in ['accepted', 'rejected', 'disputed']
+          && ((after.status == 'resolved' && votes.get('for', null) == votes.get('against', null) && after.outcome == votes[side])
+            || (after.status == 'open' && after.outcome == null && votes.get('for', null) != votes.get('against', null)));
+      }
 
       function validNewDebate(d) {
         let mine = d.creatorSide;
@@ -126,11 +169,10 @@ service cloud.firestore {
       }
 
       // ---- Map contents (editing UI arrives in milestone 2) ----------------
-      function isAnyMember(d) { return isMemberOf(d, 'for') || isMemberOf(d, 'against'); }
       function claimPath(debateId, claimId) { return /databases/$(database)/documents/debates/$(debateId)/claims/$(claimId); }
 
       match /claims/{claimId} {
-        allow read: if canRead(debate(debateId));
+        allow read: if canRead(team(debateId));
         allow write: if isAdmin();
         // Members post claims for their own side. getAfter lets the conclusion
         // be written in the same batch that creates the debate.
@@ -139,15 +181,20 @@ service cloud.firestore {
           && validSide(request.resource.data.side)
           && validClaimBody(request.resource.data)
           && request.resource.data.placed is bool
-          && isMemberOf(debateAfter(debateId), request.resource.data.side);
+          && isMemberOf(teamOf(debateAfter(debateId)), request.resource.data.side);
         // Only the author changes the wording. Any debater can place an unplaced note.
         allow update: if signedIn() && (
           (resource.data.authorUid == uid()
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'type', 'updatedAt'])
             && validClaimBody(request.resource.data))
-          || (isAnyMember(debate(debateId))
+          || (isAnyMember(team(debateId))
             && resource.data.placed == false && request.resource.data.placed == true
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['placed'])));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['placed']))
+          // Forking: any debater links a box to the sub-debate it became the conclusion of, once.
+          || (isAnyMember(team(debateId))
+            && resource.data.get('subDebateId', null) == null
+            && request.resource.data.subDebateId is string
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['subDebateId'])));
 
         function validClaimBody(c) {
           return c.text is string && c.text.size() > 0 && c.text.size() <= 1000
@@ -157,7 +204,7 @@ service cloud.firestore {
 
       // A reason or objection: co-premises pointing at a target claim.
       match /links/{linkId} {
-        allow read: if canRead(debate(debateId));
+        allow read: if canRead(team(debateId));
         allow write: if isAdmin();
         allow create: if signedIn()
           && request.resource.data.authorUid == uid()
@@ -166,26 +213,28 @@ service cloud.firestore {
           && request.resource.data.premiseClaimIds is list
           && request.resource.data.premiseClaimIds.size() > 0
           && request.resource.data.premiseClaimIds.size() <= 8
-          && existsAfter(claimPath(debateId, request.resource.data.targetClaimId))
-          && isMemberOf(debate(debateId), request.resource.data.side);
+          // The target is a box here, or (in a sub-debate) its conclusion, which lives in the parent.
+          && (existsAfter(claimPath(debateId, request.resource.data.targetClaimId))
+              || request.resource.data.targetClaimId == debate(debateId).conclusion.claimId)
+          && isMemberOf(team(debateId), request.resource.data.side);
       }
 
       // One stance per side per box; only that side's leader sets it.
       match /stances/{stanceId} {
-        allow read: if canRead(debate(debateId));
+        allow read: if canRead(team(debateId));
         allow write: if isAdmin();
         allow create, update: if validSide(request.resource.data.side)
           && stanceId == request.resource.data.targetId + '__' + request.resource.data.side
           && request.resource.data.value in ['agree', 'unsure', 'disagree']
           && request.resource.data.confidence is int
           && request.resource.data.confidence >= 0 && request.resource.data.confidence <= 100
-          && isLeader(debate(debateId), request.resource.data.side);
+          && isLeader(team(debateId), request.resource.data.side);
       }
     }
 
     // ---- Honest-debate tools (milestone 3) --------------------------------
     match /debates/{debateId}/evidence/{evidenceId} {
-      allow read: if canRead(get(/databases/$(database)/documents/debates/$(debateId)).data);
+      allow read: if canRead(team(debateId));
       allow write: if isAdmin();
       // Any debater attaches material to a box; only they can take it off.
       allow create: if signedIn()
@@ -196,18 +245,18 @@ service cloud.firestore {
             || (request.resource.data.url is string && request.resource.data.url.size() <= 2000 && request.resource.data.url.matches('https?://.+')))
         && request.resource.data.kind in ['study', 'data', 'news', 'anecdote', 'opinion']
         && exists(/databases/$(database)/documents/debates/$(debateId)/claims/$(request.resource.data.claimId))
-        && uid() in get(/databases/$(database)/documents/debates/$(debateId)).data.sides[request.resource.data.side].memberUids;
+        && uid() in team(debateId).sides[request.resource.data.side].memberUids;
       allow delete: if signedIn() && resource.data.addedBy == uid();
     }
 
     match /debates/{debateId}/comments/{commentId} {
-      allow read: if canRead(get(/databases/$(database)/documents/debates/$(debateId)).data);
+      allow read: if canRead(team(debateId));
       allow write: if isAdmin();
       allow create: if signedIn()
         && request.resource.data.authorUid == uid()
         && request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 2000
         && request.resource.data.side in ['for', 'against']
-        && uid() in get(/databases/$(database)/documents/debates/$(debateId)).data.sides[request.resource.data.side].memberUids
+        && uid() in team(debateId).sides[request.resource.data.side].memberUids
         && ((request.resource.data.kind == 'comment'
               && request.resource.data.keys().hasOnly(['targetId', 'authorUid', 'side', 'kind', 'text', 'createdAt']))
           || (request.resource.data.kind == 'restatement'
@@ -224,18 +273,18 @@ service cloud.firestore {
         && (request.resource.data.reply == null
             || (request.resource.data.reply is string && request.resource.data.reply.size() <= 2000))
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reply', 'respondedBy', 'respondedAt'])
-        && uid() in get(/databases/$(database)/documents/debates/$(debateId)).data.sides[
+        && uid() in team(debateId).sides[
              get(/databases/$(database)/documents/debates/$(debateId)/claims/$(resource.data.targetId)).data.side
            ].memberUids;
     }
 
     // Written by a side's leader alongside each stance change. Never edited.
     match /debates/{debateId}/stanceHistory/{changeId} {
-      allow read: if canRead(get(/databases/$(database)/documents/debates/$(debateId)).data);
+      allow read: if canRead(team(debateId));
       allow create: if isAdmin() || (signedIn()
         && request.resource.data.by == uid()
         && request.resource.data.side in ['for', 'against']
-        && get(/databases/$(database)/documents/debates/$(debateId)).data.sides[request.resource.data.side].leaderUid == uid()
+        && team(debateId).sides[request.resource.data.side].leaderUid == uid()
         && request.resource.data.to.value in ['agree', 'unsure', 'disagree']
         && request.resource.data.conceded is bool
         && request.resource.data.keys().hasOnly(['targetId', 'side', 'from', 'to', 'conceded', 'by', 'at']));
@@ -244,9 +293,9 @@ service cloud.firestore {
     // ---- Live presence (milestone 4) ---------------------------------------
     // Each open tab keeps its own heartbeat document up to date.
     match /debates/{debateId}/presence/{userId} {
-      allow read: if canRead(get(/databases/$(database)/documents/debates/$(debateId)).data);
+      allow read: if canRead(team(debateId));
       allow create, update: if signedIn() && uid() == userId
-        && uid() in get(/databases/$(database)/documents/debates/$(debateId)).data.participantUids
+        && uid() in team(debateId).participantUids
         && request.resource.data.keys().hasOnly(['name', 'side', 'at', 'editing'])
         && request.resource.data.name is string && request.resource.data.name.size() <= 200;
       allow delete: if signedIn() && uid() == userId;
@@ -254,7 +303,7 @@ service cloud.firestore {
 
     // ---- Imported transcripts ---------------------------------------------
     match /debates/{debateId}/transcript/{chunkId} {
-      allow read: if canRead(get(/databases/$(database)/documents/debates/$(debateId)).data);
+      allow read: if canRead(team(debateId));
       allow write: if isAdmin();
     }
 

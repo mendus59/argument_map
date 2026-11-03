@@ -113,13 +113,86 @@ export function watchDebateMap(db: Firestore, debateId: string, onChange: (map: 
   let stances: Stance[] = []
   let evidence: Evidence[] = []
   let comments: Comment[] = []
-  const emit = () => onChange(debate ? { debate, claims, links, stances, evidence, comments } : null)
+  // A sub-debate shares its root's teams, and its conclusion (and that box's
+  // stances) live in the debate it was forked from.
+  let root: Debate | null = null
+  let rootWatch: { id: string; stop: () => void } | null = null
+  let outside: { claim: Claim | null; stances: Stance[] } = { claim: null, stances: [] }
+  let outsideWatch: { key: string; stop: () => void } | null = null
+  const emit = () => {
+    if (!debate) return onChange(null)
+    if (debate.root && !root) return // wait for the teams
+    const merged: Debate = root
+      ? {
+          ...debate,
+          sides: root.sides,
+          readerUids: root.readerUids,
+          participantUids: root.participantUids,
+          people: root.people,
+          visibility: root.visibility,
+          settings: root.settings,
+        }
+      : debate
+    const external = debate.conclusion.debateId !== debate.id
+    onChange({
+      debate: merged,
+      claims: external && outside.claim ? [outside.claim, ...claims] : claims,
+      links,
+      stances: external ? [...outside.stances, ...stances] : stances,
+      evidence,
+      comments,
+    })
+  }
+  const follow = (d: Debate) => {
+    if (d.root && rootWatch?.id !== d.root) {
+      rootWatch?.stop()
+      const id = d.root
+      rootWatch = {
+        id,
+        stop: onSnapshot(
+          doc(db, 'debates', id),
+          (snap) => {
+            root = snap.exists() ? { ...(snap.data() as Omit<Debate, 'id'>), id } : null
+            emit()
+          },
+          onError,
+        ),
+      }
+    }
+    const { debateId: home, claimId } = d.conclusion
+    const key = `${home}/${claimId}`
+    if (home !== d.id && outsideWatch?.key !== key) {
+      outsideWatch?.stop()
+      const stops = [
+        onSnapshot(
+          doc(db, 'debates', home, 'claims', claimId),
+          (snap) => {
+            outside = { ...outside, claim: snap.exists() ? { ...(snap.data() as Omit<Claim, 'id'>), id: snap.id } : null }
+            emit()
+          },
+          onError,
+        ),
+        ...(['for', 'against'] as SideId[]).map((side) =>
+          onSnapshot(
+            doc(db, 'debates', home, 'stances', `${claimId}__${side}`),
+            (snap) => {
+              outside = { ...outside, stances: [...outside.stances.filter((st) => st.side !== side), ...(snap.exists() ? [snap.data() as Stance] : [])] }
+              emit()
+            },
+            onError,
+          ),
+        ),
+      ]
+      outsideWatch = { key, stop: () => stops.forEach((u) => u()) }
+    }
+  }
 
   const unsubs = [
     onSnapshot(
       ref,
       (snap) => {
         debate = snap.exists() ? { ...(snap.data() as Omit<Debate, 'id'>), id: snap.id } : null
+        if (debate) follow(debate)
         emit()
       },
       onError,
@@ -167,7 +240,11 @@ export function watchDebateMap(db: Firestore, debateId: string, onChange: (map: 
       onError,
     ),
   ]
-  return () => unsubs.forEach((u) => u())
+  return () => {
+    unsubs.forEach((u) => u())
+    rootWatch?.stop()
+    outsideWatch?.stop()
+  }
 }
 
 function newToken() {

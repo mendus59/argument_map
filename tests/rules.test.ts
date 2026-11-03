@@ -26,8 +26,10 @@ import { acceptInvite, createDebate, createInvite, getInvite, roleIn } from '../
 import { addArgument, addNote, editClaim, placeNote, setStance } from '../src/data/map'
 import { addComment, addEvidence, objectWithRestatement, removeEvidence, respondToRestatement, setRestateFirst } from '../src/data/honest'
 import { endRound, startRound } from '../src/data/live'
+import { forkClaim, voteOutcome } from '../src/data/subdebates'
+import { watchDebateMap } from '../src/data/debates'
 import { CHUNK, createImport, loadTranscript, searchPublic, searchTermsFor, setVisibility } from '../src/data/imports'
-import type { Debate } from '../src/model/types'
+import type { Debate, DebateMap } from '../src/model/types'
 
 let env: RulesTestEnvironment
 
@@ -520,5 +522,77 @@ describe('live and async (milestone 4)', () => {
     expect(after.round).toMatchObject({ number: 1, side: 'against', minutes: 5 })
     await assertFails(startRound(db('rita'), debate, user('rita', 'Rita'), 'for', 5))
     await assertSucceeds(endRound(db('ana'), debate))
+  })
+})
+
+describe('sub-debates (milestone 5)', () => {
+  const user = (uid: string, name: string) => ({ uid, displayName: name, photoURL: null, email: null }) as unknown as User
+  const ana = user('ana', 'Ana')
+  const ben = user('ben', 'Ben')
+  const rita = user('rita', 'Rita')
+
+  // Waits until the live map has loaded the box under test (listeners arrive one by one).
+  async function mapOf(uid: string, id: string, ready = (m: DebateMap) => m.claims.some((c) => c.id === premise)): Promise<DebateMap> {
+    return new Promise((resolve, reject) => {
+      const stop = watchDebateMap(db(uid), id, (m) => {
+        if (m && ready(m)) {
+          stop()
+          resolve(m)
+        }
+      }, reject)
+    })
+  }
+  const debateOf = async (uid: string, id: string) => ({ ...((await getDoc(doc(db(uid), `debates/${id}`))).data() as Debate), id })
+
+  let premise = ''
+  beforeEach(async () => {
+    await seedDebate()
+    await setDoc(doc(db('ana'), 'invites/t-lead'), invite('ana', 'leader', 'against'))
+    await setDoc(doc(db('ana'), 'invites/t-read'), invite('ana', 'reader', null))
+    await join('ben', 't-lead', 'leader', 'against')
+    await join('rita', 't-read', 'reader', null)
+    await addArgument(db('ana'), ana, 'd1', 'for', 'reason', 'c', [{ text: 'Fares cover 20%.', type: 'fact' }])
+    const claims = await getDocs(collection(db('ana'), 'debates/d1/claims'))
+    premise = claims.docs.find((d) => d.id !== 'c')!.id
+  })
+
+  it('lets either side fork a box; the sub-debate shares the root teams and the box', async () => {
+    const parent = await mapOf('ben', 'd1')
+    const claim = parent.claims.find((c) => c.id === premise)!
+    const sub = await assertSucceeds(forkClaim(db('ben'), ben, parent, claim, 'against'))
+    expect((await getDoc(doc(db('ana'), `debates/d1/claims/${premise}`))).data()?.subDebateId).toBe(sub)
+    // Readers of the root can read it; outsiders can't.
+    await assertSucceeds(getDoc(doc(db('rita'), `debates/${sub}`)))
+    await assertFails(getDoc(doc(db('zed'), `debates/${sub}`)))
+    // The sub-debate's map shows the parent's box as its conclusion, with the root's teams.
+    const m = await mapOf('ana', sub, (x) => x.claims.some((c) => c.id === premise) && x.debate.sides.against.leaderUid !== null)
+    expect(m.debate.sides.against.leaderUid).toBe('ben')
+    expect(m.claims[0].id).toBe(premise)
+    // Arguments go in the sub-debate, aimed at the shared box; stances on it stay in the parent.
+    await assertSucceeds(addArgument(db('ben'), ben, sub, 'against', 'objection', premise, [{ text: 'That ignores the state subsidy.', type: 'fact' }]))
+    await assertSucceeds(setStance(db('ben'), 'd1', premise, 'against', 'disagree', 70))
+    await assertFails(addArgument(db('rita'), rita, sub, 'for', 'reason', premise, [{ text: 'Reader', type: 'fact' }]))
+  })
+
+  it('refuses forks by readers, of missing boxes, or twice', async () => {
+    const parent = await mapOf('ana', 'd1')
+    const claim = parent.claims.find((c) => c.id === premise)!
+    await assertFails(forkClaim(db('rita'), rita, { ...parent }, claim, 'for'))
+    await assertSucceeds(forkClaim(db('ana'), ana, parent, claim, 'for'))
+    await assertFails(forkClaim(db('ben'), ben, parent, claim, 'against'))
+  })
+
+  it('resolves only when both leaders record the same outcome', async () => {
+    const parent = await mapOf('ana', 'd1')
+    const sub = await forkClaim(db('ana'), ana, parent, parent.claims.find((c) => c.id === premise)!, 'for')
+    await assertSucceeds(voteOutcome(db('ana'), await debateOf('ana', sub), 'for', 'accepted'))
+    await assertFails(voteOutcome(db('rita'), await debateOf('rita', sub), 'against', 'accepted'))
+    await assertFails(voteOutcome(db('ana'), await debateOf('ana', sub), 'against', 'accepted'))
+    // A forged resolution with mismatched votes is refused.
+    await assertFails(updateDoc(doc(db('ben'), `debates/${sub}`), { 'outcomeVotes.against': 'rejected', status: 'resolved', outcome: 'rejected' }))
+    await assertSucceeds(voteOutcome(db('ben'), await debateOf('ben', sub), 'against', 'accepted'))
+    const done = await debateOf('ana', sub)
+    expect(done.status).toBe('resolved')
+    expect(done.outcome).toBe('accepted')
   })
 })

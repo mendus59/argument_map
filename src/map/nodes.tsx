@@ -1,6 +1,8 @@
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
-import type { Claim, Link, Stance } from '../model/types'
+import type { Claim, Link, Outcome, Stance } from '../model/types'
 import { formatTime } from '../import/transcript'
+
+export type SubStatus = { id: string; status: 'open' | 'resolved'; outcome: Outcome | null; depth: number }
 
 export type ClaimNodeData = {
   claim: Claim
@@ -12,6 +14,7 @@ export type ClaimNodeData = {
   selected: boolean
   isNew: boolean
   writers: string[]
+  sub?: SubStatus
 }
 export type GroupNodeData = {
   link: Link
@@ -42,7 +45,7 @@ function StanceChip({ side, stance }: { side: 'F' | 'A'; stance?: Stance }) {
 }
 
 export function ClaimNode({ data }: NodeProps<ClaimNodeType>) {
-  const { claim, role, stances, isCrux, evidenceCount, commentCount, selected, isNew, writers } = data
+  const { claim, role, stances, isCrux, evidenceCount, commentCount, selected, isNew, writers, sub } = data
   return (
     <div className={`claim-node ${role}${selected ? ' selected' : ''}${isNew ? ' new' : ''}`}>
       {isNew && <span className="badge new-badge">New</span>}
@@ -55,7 +58,12 @@ export function ClaimNode({ data }: NodeProps<ClaimNodeType>) {
         <StanceChip side="F" stance={stances.for} />
         <StanceChip side="A" stance={stances.against} />
         {isCrux && <span className="badge crux">Crux</span>}
-        {claim.subDebateId && <span className="badge fork">⑂ Sub-debate</span>}
+        {claim.subDebateId && role !== 'conclusion' && <SubBadge sub={sub} />}
+        {claim.settledRef && (
+          <span className="badge settled" title="Settled in a sub-debate">
+            ✓ Settled
+          </span>
+        )}
         {evidenceCount > 0 && (
           <span className="count" title={`${evidenceCount} ${evidenceCount === 1 ? 'source' : 'sources'}`}>
             ⧉ {evidenceCount}
@@ -73,6 +81,22 @@ export function ClaimNode({ data }: NodeProps<ClaimNodeType>) {
         )}
       </div>
     </div>
+  )
+}
+
+function SubBadge({ sub }: { sub?: SubStatus }) {
+  if (!sub || sub.status === 'open') {
+    return (
+      <span className="badge fork" title="Being argued in a sub-debate">
+        ⑂ Sub-debate{sub ? ` · depth ${sub.depth}` : ''}
+      </span>
+    )
+  }
+  const label = sub.outcome === 'accepted' ? '✓ Accepted' : sub.outcome === 'rejected' ? '✗ Rejected' : '⇄ Agree to disagree'
+  return (
+    <span className={`badge outcome-${sub.outcome}`} title="Settled in a sub-debate">
+      {label}
+    </span>
   )
 }
 

@@ -5,6 +5,7 @@ import { addComment, addEvidence, removeEvidence, respondToRestatement, setResta
 import { checkMap, issueCount } from '../model/check'
 import type { Claim, Comment, Debate, DebateMap, EvidenceKind, SideId, StanceChange } from '../model/types'
 import type { Selection } from '../map/ArgumentMap'
+import { stanceHome } from '../data/subdebates'
 
 const KINDS: { value: EvidenceKind; label: string; hint: string }[] = [
   { value: 'study', label: 'Study', hint: 'Peer-reviewed or formal research' },
@@ -227,7 +228,8 @@ const VALUE_LABEL = { agree: 'agree', unsure: 'unsure', disagree: 'disagree' } a
 /** How each side's stance on a box has moved, including concessions. */
 export function StanceHistory({ map, targetId }: { map: DebateMap; targetId: string }) {
   const [history, setHistory] = useState<StanceChange[]>([])
-  useEffect(() => watchStanceHistory(db, map.debate.id, targetId, setHistory), [map.debate.id, targetId])
+  const home = stanceHome(map, targetId)
+  useEffect(() => watchStanceHistory(db, home, targetId, setHistory), [home, targetId])
   if (!history.length) return null
   return (
     <details className="stack-xs history">

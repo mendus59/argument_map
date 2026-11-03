@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { ArgumentMap, type Selection } from '../map/ArgumentMap'
+import type { SubStatus } from '../map/nodes'
 import type { DebateMap, SideId } from '../model/types'
 
 function sideNames(map: DebateMap, side: SideId) {
@@ -22,6 +23,9 @@ export function DebateView({
   badges,
   highlight,
   writers,
+  subs,
+  depth,
+  crumbs,
   selection,
   onSelect,
 }: {
@@ -34,6 +38,11 @@ export function DebateView({
   badges?: ReactNode
   highlight?: Set<string>
   writers?: Map<string, string[]>
+  subs?: Map<string, SubStatus>
+  /** Unresolved depth worked out from the live tree; falls back to the stored value. */
+  depth?: number
+  /** Links shown above the title, such as the parent debates of a sub-debate. */
+  crumbs?: ReactNode
   selection?: Selection
   onSelect?: (s: Selection) => void
 }) {
@@ -43,7 +52,7 @@ export function DebateView({
     <div className="debate">
       <header className="debate-head">
         <div className="title">
-          <span className="eyebrow">{eyebrow}</span>
+          {crumbs ?? <span className="eyebrow">{eyebrow}</span>}
           <h1>{debate.title}</h1>
         </div>
         <div className="sides">
@@ -55,13 +64,13 @@ export function DebateView({
           </span>
           {badges}
           <span className="depth" title="How deep the chain of open sub-debates goes">
-            Unresolved depth {debate.unresolvedDepth}
+            Unresolved depth {depth ?? debate.unresolvedDepth}
           </span>
         </div>
       </header>
       <main className={`workspace${source ? ' with-source' : ''}`}>
         {source}
-        <ArgumentMap map={map} selection={selection} onSelect={onSelect} highlight={highlight} writers={writers} />
+        <ArgumentMap map={map} selection={selection} onSelect={onSelect} highlight={highlight} writers={writers} subs={subs} />
         <aside className="side-panel">
           {panel}
           {notes.length > 0 && (
