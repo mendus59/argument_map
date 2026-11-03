@@ -11,7 +11,7 @@ import LibraryPage from './pages/LibraryPage'
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
         <Shell />
       </BrowserRouter>
     </AuthProvider>

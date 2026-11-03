@@ -14,7 +14,7 @@ export function InviteButton({ debate, role, side, label, primary }: { debate: D
     setState('busy')
     try {
       const token = await createInvite(db, user, debate, role, side)
-      const url = `${window.location.origin}/invite/${token}`
+      const url = `${window.location.origin}${import.meta.env.BASE_URL}invite/${token}`
       setLink(url)
       try {
         await navigator.clipboard.writeText(url)
