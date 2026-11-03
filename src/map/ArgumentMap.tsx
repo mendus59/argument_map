@@ -11,7 +11,15 @@ const nodeTypes = { claim: ClaimNode, premiseGroup: GroupNode }
 export type Selection = { kind: 'claim' | 'link'; id: string } | null
 
 /** The argument map. Clicking a box or a group selects it; the panel beside it does the editing. */
-type Props = { map: DebateMap; selection?: Selection; onSelect?: (s: Selection) => void }
+type Props = {
+  map: DebateMap
+  selection?: Selection
+  onSelect?: (s: Selection) => void
+  /** Boxes changed since the viewer's last visit. */
+  highlight?: Set<string>
+  /** Names of people writing under each box right now. */
+  writers?: Map<string, string[]>
+}
 
 export function ArgumentMap(props: Props) {
   return (
@@ -31,7 +39,7 @@ function FitOnGrowth({ count }: { count: number }) {
   return null
 }
 
-function MapCanvas({ map, selection, onSelect }: Props) {
+function MapCanvas({ map, selection, onSelect, highlight, writers }: Props) {
   const { nodes, edges } = useMemo(() => {
     const layout = layoutMap(map)
     const cruxes = findCruxes(map)
@@ -64,6 +72,8 @@ function MapCanvas({ map, selection, onSelect }: Props) {
         evidenceCount: map.evidence.filter((e) => e.claimId === p.claim.id).length,
         commentCount: map.comments.filter((c) => c.targetId === p.claim.id).length,
         selected: selection?.kind === 'claim' && selection.id === p.claim.id,
+        isNew: !!highlight?.has(p.claim.id),
+        writers: writers?.get(p.claim.id) ?? [],
       },
       style: { width: CLAIM_W },
       draggable: false,
@@ -82,7 +92,7 @@ function MapCanvas({ map, selection, onSelect }: Props) {
       }
     })
     return { nodes: [...groups, ...claims], edges }
-  }, [map, selection])
+  }, [map, selection, highlight, writers])
 
   return (
     <div className="map-canvas">

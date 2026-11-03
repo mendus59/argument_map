@@ -233,3 +233,22 @@ input.input[type="search"] { padding: 9px 11px; font-size: 15px; }
 .check-item { text-align: left; font-size: 13px; }
 .map-check { border-top: 1px solid var(--line); padding-top: 12px; }
 .check-row { display: flex; gap: 8px; align-items: flex-start; }
+
+/* Live and async (milestone 4) */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.presence { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.online { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+.online .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--agree); box-shadow: 0 0 0 2px var(--agree-soft); }
+.round { font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--ink); color: var(--surface); font-variant-numeric: tabular-nums; }
+.round.over { background: var(--dis); }
+.claim-node { position: relative; }
+.claim-node.new { box-shadow: 0 0 0 3px color-mix(in srgb, var(--unsure) 70%, transparent); }
+.claim-node.new.selected { box-shadow: 0 0 0 3px var(--accent); }
+.new-badge { position: absolute; top: -9px; right: 10px; background: var(--unsure); }
+.writing { position: absolute; bottom: -20px; left: 4px; font-size: 11px; color: var(--accent); font-style: italic; white-space: nowrap; }
+.activity { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.activity li { border-left: 3px solid var(--line); padding: 2px 0 2px 8px; }
+.activity li.for { border-left-color: var(--accent); }
+.activity li.against { border-left-color: var(--dis); }
+.activity li.fresh { background: var(--unsure-soft); border-radius: 0 6px 6px 0; }
+.activity .linklike { text-align: left; }

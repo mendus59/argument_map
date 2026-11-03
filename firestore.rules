@@ -32,6 +32,11 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create, update: if signedIn() && uid() == userId
         && request.resource.data.keys().hasOnly(['displayName', 'photoURL', 'updatedAt']);
+
+      // When the user last opened each debate, for "new since your last visit".
+      match /visits/{debateId} {
+        allow read, write: if signedIn() && uid() == userId;
+      }
     }
 
     // ---- Admins ------------------------------------------------------------
@@ -56,7 +61,7 @@ service cloud.firestore {
       // Anyone holding an unused invite can join (see joining()).
       allow update: if isAdmin()
         || (isAnyLeader(resource.data)
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'subjects', 'settings', 'updatedAt']))
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'subjects', 'settings', 'round', 'updatedAt']))
         || joining(debateId);
 
       allow delete: if isAdmin();
@@ -234,6 +239,17 @@ service cloud.firestore {
         && request.resource.data.to.value in ['agree', 'unsure', 'disagree']
         && request.resource.data.conceded is bool
         && request.resource.data.keys().hasOnly(['targetId', 'side', 'from', 'to', 'conceded', 'by', 'at']));
+    }
+
+    // ---- Live presence (milestone 4) ---------------------------------------
+    // Each open tab keeps its own heartbeat document up to date.
+    match /debates/{debateId}/presence/{userId} {
+      allow read: if canRead(get(/databases/$(database)/documents/debates/$(debateId)).data);
+      allow create, update: if signedIn() && uid() == userId
+        && uid() in get(/databases/$(database)/documents/debates/$(debateId)).data.participantUids
+        && request.resource.data.keys().hasOnly(['name', 'side', 'at', 'editing'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 200;
+      allow delete: if signedIn() && uid() == userId;
     }
 
     // ---- Imported transcripts ---------------------------------------------

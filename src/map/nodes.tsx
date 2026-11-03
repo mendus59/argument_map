@@ -10,6 +10,8 @@ export type ClaimNodeData = {
   evidenceCount: number
   commentCount: number
   selected: boolean
+  isNew: boolean
+  writers: string[]
 }
 export type GroupNodeData = {
   link: Link
@@ -40,9 +42,11 @@ function StanceChip({ side, stance }: { side: 'F' | 'A'; stance?: Stance }) {
 }
 
 export function ClaimNode({ data }: NodeProps<ClaimNodeType>) {
-  const { claim, role, stances, isCrux, evidenceCount, commentCount, selected } = data
+  const { claim, role, stances, isCrux, evidenceCount, commentCount, selected, isNew, writers } = data
   return (
-    <div className={`claim-node ${role}${selected ? ' selected' : ''}`}>
+    <div className={`claim-node ${role}${selected ? ' selected' : ''}${isNew ? ' new' : ''}`}>
+      {isNew && <span className="badge new-badge">New</span>}
+      {writers.length > 0 && <span className="writing">✎ {writers.join(', ')} writing…</span>}
       <Handle type="target" position={Position.Bottom} isConnectable={false} />
       <Handle type="source" position={Position.Top} isConnectable={false} />
       <span className={`kind kind-${claim.type}`}>{TYPE_LABEL[claim.type]}</span>
