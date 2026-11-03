@@ -64,6 +64,11 @@ export function ClaimNode({ data }: NodeProps<ClaimNodeType>) {
             ✓ Settled
           </span>
         )}
+        {claim.aiSuggested && (
+          <span className="badge ai" title="Suggested by AI and accepted by the admin">
+            AI
+          </span>
+        )}
         {evidenceCount > 0 && (
           <span className="count" title={`${evidenceCount} ${evidenceCount === 1 ? 'source' : 'sources'}`}>
             ⧉ {evidenceCount}

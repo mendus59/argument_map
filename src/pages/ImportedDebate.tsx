@@ -6,6 +6,7 @@ import { DebateView } from '../components/DebateView'
 import { EditPanel } from '../components/EditPanel'
 import { SourcePane, type SeekFn } from '../components/SourcePane'
 import { InviteButton } from '../components/InviteButton'
+import { AiPanel } from '../components/AiPanel'
 import type { Selection } from '../map/ArgumentMap'
 import type { Segment } from '../import/transcript'
 import type { ClaimSource, DebateMap, SideId } from '../model/types'
@@ -51,6 +52,11 @@ export function ImportedDebate({ map }: { map: DebateMap }) {
   }
 
   const seek = (t: number) => seekRef.current?.(t)
+  function seekSegment(i: number) {
+    setFocus(i)
+    const start = segments?.[i]?.start
+    if (start !== null && start !== undefined) seek(start)
+  }
 
   return (
     <DebateView
@@ -102,6 +108,7 @@ export function ImportedDebate({ map }: { map: DebateMap }) {
               onSelect={select}
               source={{ draft, onDraftUsed: () => setDraft(null), onSeek: seek }}
             />
+            <AiPanel map={map} user={user} segments={segments} onSelectClaim={(id) => select({ kind: 'claim', id })} onSeek={seekSegment} />
             <AdminSharing map={map} />
           </>
         ) : (
@@ -114,7 +121,27 @@ export function ImportedDebate({ map }: { map: DebateMap }) {
 
 function ReaderPanel({ map, selection, onSeek }: { map: DebateMap; selection: Selection; onSeek: SeekFn }) {
   const claim = selection?.kind === 'claim' ? map.claims.find((c) => c.id === selection.id) : undefined
-  if (!claim) return <p className="small muted">Select a box to see the passage it came from.</p>
+  const summary = map.debate.aiSummary
+  if (!claim) {
+    return (
+      <div className="stack-sm">
+        {summary && (
+          <section className="stack-xs">
+            <span className="eyebrow">Summary</span>
+            <p className="small">{summary.overall}</p>
+            <p className="small">
+              <strong>{map.debate.sides.for.label}:</strong> {summary.for}
+            </p>
+            <p className="small">
+              <strong>{map.debate.sides.against.label}:</strong> {summary.against}
+            </p>
+            <small className="muted">Drafted with AI and checked by the editor.</small>
+          </section>
+        )}
+        <p className="small muted">Select a box to see the passage it came from.</p>
+      </div>
+    )
+  }
   return (
     <section className="stack-sm">
       <span className="eyebrow">Selected box</span>

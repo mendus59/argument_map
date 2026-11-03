@@ -55,6 +55,8 @@ export interface Debate {
   round?: Round | null
   /** Where an imported debate came from. */
   source?: DebateSource
+  /** A summary drafted by AI and shown to readers by the admin. */
+  aiSummary?: { overall: string; for: string; against: string } | null
   /** Lower-cased participant names and subjects, for searching public debates. */
   searchTerms?: string[]
 }

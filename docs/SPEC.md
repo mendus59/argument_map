@@ -115,8 +115,10 @@ Security rules enforce: only authors edit claim text; only a side's leader write
 ## Costs and infrastructure
 
 - Firebase Spark (free) plan covers Auth, Firestore, Realtime Database and Hosting at this scale.
-- AI assist and transcription need a server to keep the API key secret. Firebase Cloud Functions require the Blaze (pay-as-you-go) plan, which still has a free monthly allowance. Usage at this scale should stay within it; set a billing budget alert at a low amount. Only the admin can trigger these functions.
-- Every AI or transcription run shows an estimate first and is refused by the server if it would pass the monthly token cap.
+- AI assist uses the admin's own Claude API key, called straight from the admin's browser (decided 2026-11-03). The key is kept in that browser's local storage and never written to Firestore, so no server or Blaze plan is needed. Runs use Claude Opus 5.5 with structured output, and fall back to another model automatically if a safety check declines.
+- Every AI run counts its input tokens first and shows a likely and a highest possible cost. The app blocks a run whose highest cost would take the month past the admin's cap (default $10), and records each run's actual cost under `users/{uid}/ai/{yyyy-mm}`.
+- AI results are saved to `debates/{id}/analyses` (admin only) as a review queue: hidden premises join their argument as a co-premise, unmapped arguments become new boxes linked to the transcript, fallacies become comments, and the summary is shown to readers only when the admin publishes it (`debate.aiSummary`). Accepted boxes carry `aiSuggested` and an AI badge.
+- Audio transcription, if ever added, would need a server (Cloud Functions on the Blaze plan).
 - Map layout uses React Flow (MIT licensed), so there is no paid diagram library.
 
 ## Open items
@@ -135,4 +137,4 @@ Security rules enforce: only authors edit claim text; only a side's leader write
 | 4 | Async and live (done) | Live listeners, presence, activity feed, optional timed rounds |
 | 5 | Sub-debates (done) | Fork, shared stances, outcomes, unresolved depth, settled references, breadcrumbs and tree |
 | 6 | Admin import (done) | YouTube link and pasted transcript, speakers to sides, select-to-map with timestamps, video seek, visibility, reader invites. Public library with search by participant or subject |
-| 7 | AI and YouTube | Cloud Functions, AI assist review queue, budget cap, YouTube captions and transcription |
+| 7 | AI assist (done) | Admin's own API key in the browser, estimate and monthly cap, summary, hidden premises, fallacies, unmapped arguments, review queue |
