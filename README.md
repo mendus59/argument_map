@@ -25,6 +25,10 @@ Importing debates is admin-only. To make an account the admin, sign in once, cop
 
 ### Deploy
 
+The app deploys to GitHub Pages at https://mendus59.github.io/argument_map/ on every push to `main` (`.github/workflows/pages.yml`). One-time setup: in the repo's Settings → Pages, set Source to "GitHub Actions", and in Firebase console → Authentication → Settings → Authorized domains, add `mendus59.github.io`. Security rules still deploy separately (below, or by pasting into the console).
+
+Firebase Hosting also works:
+
 ```sh
 npx firebase login
 npx firebase deploy --only firestore   # rules and indexes
