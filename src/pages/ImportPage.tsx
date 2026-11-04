@@ -20,6 +20,7 @@ export default function ImportPage() {
   const [subjects, setSubjects] = useState('')
   const [labels, setLabels] = useState<Record<SideId, string>>({ for: 'For', against: 'Against' })
   const [text, setText] = useState('')
+  const [autoMap, setAutoMap] = useState(true)
   const [assign, setAssign] = useState<Record<string, Assign>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -93,7 +94,7 @@ export default function ImportPage() {
         },
         segments,
       })
-      navigate(`/d/${id}`)
+      navigate(autoMap ? `/d/${id}?automap=1` : `/d/${id}`)
     } catch (err) {
       console.error(err)
       setError(saveErrorMessage(err, 'The import'))
@@ -196,6 +197,10 @@ export default function ImportPage() {
         segments.length > 0 && <p className="small muted">No speaker names were found, so you’ll pick the side for each box as you map it.</p>
       )}
 
+      <label className="row-sm small" htmlFor="automap">
+        <input id="automap" type="checkbox" checked={autoMap} onChange={(e) => setAutoMap(e.target.checked)} />
+        Map it automatically with AI after importing. You’ll see the cost before it runs.
+      </label>
       {error && <p className="error">{error}</p>}
       <div className="row">
         <button className="btn pri" type="submit" disabled={busy}>

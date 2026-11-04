@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { db } from '../firebase'
 import { loadTranscript, setVisibility } from '../data/imports'
@@ -20,6 +21,8 @@ export function ImportedDebate({ map }: { map: DebateMap }) {
   const [draft, setDraft] = useState<ClaimSource | null>(null)
   const [side, setSide] = useState<SideId>('for')
   const [focus, setFocus] = useState<number | null>(null)
+  const [params] = useSearchParams()
+  const autoStart = params.get('automap') === '1'
   const seekRef = useRef<SeekFn | null>(null)
 
   useEffect(() => {
@@ -52,11 +55,16 @@ export function ImportedDebate({ map }: { map: DebateMap }) {
   }
 
   const seek = (t: number) => seekRef.current?.(t)
+  const mapIsEmpty = !map.claims.some((c) => c.placed && c.id !== debate.conclusion.claimId)
   function seekSegment(i: number) {
     setFocus(i)
     const start = segments?.[i]?.start
     if (start !== null && start !== undefined) seek(start)
   }
+
+  const aiPanel = user && (
+    <AiPanel map={map} user={user} segments={segments} autoStart={autoStart} onSelectClaim={(id) => select({ kind: 'claim', id })} onSeek={seekSegment} />
+  )
 
   return (
     <DebateView
@@ -100,6 +108,7 @@ export function ImportedDebate({ map }: { map: DebateMap }) {
                 </button>
               </div>
             )}
+            {mapIsEmpty && aiPanel}
             <EditPanel
               map={map}
               selection={selection}
@@ -108,7 +117,7 @@ export function ImportedDebate({ map }: { map: DebateMap }) {
               onSelect={select}
               source={{ draft, onDraftUsed: () => setDraft(null), onSeek: seek }}
             />
-            <AiPanel map={map} user={user} segments={segments} onSelectClaim={(id) => select({ kind: 'claim', id })} onSeek={seekSegment} />
+            {!mapIsEmpty && aiPanel}
             <AdminSharing map={map} />
           </>
         ) : (

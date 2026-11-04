@@ -1,18 +1,25 @@
 // Calls the Claude API straight from the admin's browser with the admin's own key.
 // Loaded only when the admin runs an analysis, so readers never download the SDK.
 import Anthropic from '@anthropic-ai/sdk'
-import { MAX_OUTPUT_TOKENS, MODEL, RESULT_SCHEMA, SYSTEM_PROMPT } from './analysis'
+import { MAX_OUTPUT_TOKENS, MODEL } from './analysis'
+
+/** One structured request: instructions, the debate as text, and the JSON shape to return. */
+export interface Job {
+  system: string
+  user: string
+  schema: Record<string, unknown>
+}
 
 function client(apiKey: string) {
   // Browser use is safe here because the only key is the admin's own, entered on their device.
   return new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
 }
 
-export async function countInputTokens(apiKey: string, userPrompt: string): Promise<number> {
+export async function countInputTokens(apiKey: string, job: Job): Promise<number> {
   const res = await client(apiKey).messages.countTokens({
     model: MODEL,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: userPrompt }],
+    system: job.system,
+    messages: [{ role: 'user', content: job.user }],
   })
   return res.input_tokens
 }
@@ -26,10 +33,10 @@ export interface RunOutcome {
   stopReason: string | null
 }
 
-/** Runs the analysis, streaming so a long run doesn't time out. onProgress gets characters written so far. */
-export async function runAnalysis(
+/** Runs a job, streaming so a long run doesn't time out. onProgress gets characters written so far. */
+export async function runJob(
   apiKey: string,
-  userPrompt: string,
+  job: Job,
   onProgress: (chars: number) => void,
   signal: AbortSignal,
 ): Promise<RunOutcome> {
@@ -41,9 +48,9 @@ export async function runAnalysis(
       // If a safety check declines the request, the API retries it on a suitable model.
       fallbacks: 'default',
       thinking: { type: 'adaptive' },
-      output_config: { effort: 'high', format: { type: 'json_schema', schema: RESULT_SCHEMA } },
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userPrompt }],
+      output_config: { effort: 'high', format: { type: 'json_schema', schema: job.schema } },
+      system: job.system,
+      messages: [{ role: 'user', content: job.user }],
     },
     { signal },
   )
