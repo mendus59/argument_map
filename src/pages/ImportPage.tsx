@@ -2,6 +2,7 @@ import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { db } from '../firebase'
+import { saveErrorMessage } from '../data/errors'
 import { createImport, fetchVideoInfo } from '../data/imports'
 import { formatTime, parseTranscript, speakersOf, youtubeId } from '../import/transcript'
 import type { SideId } from '../model/types'
@@ -95,7 +96,7 @@ export default function ImportPage() {
       navigate(`/d/${id}`)
     } catch (err) {
       console.error(err)
-      setError('The import could not be saved. Check your connection and try again.')
+      setError(saveErrorMessage(err, 'The import'))
       setBusy(false)
     }
   }
