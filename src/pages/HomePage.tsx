@@ -42,7 +42,12 @@ function MyDebates({ uid }: { uid: string }) {
     () =>
       watchMyDebates(db, uid, setDebates, (e) => {
         console.error(e)
-        setError('Your debates could not be loaded. Check your connection and reload the page.')
+        const code = (e as { code?: string }).code
+        setError(
+          code === 'permission-denied'
+            ? 'Your debates could not be loaded: the database refused the request. Check that the latest Firestore rules are published.'
+            : `Your debates could not be loaded${code ? ` (${code})` : ''}. Check your connection and reload the page.`,
+        )
       }),
     [uid],
   )

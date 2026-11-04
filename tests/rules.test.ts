@@ -22,7 +22,7 @@ import {
   type Firestore,
 } from 'firebase/firestore'
 import type { User } from 'firebase/auth'
-import { acceptInvite, createDebate, createInvite, getInvite, roleIn } from '../src/data/debates'
+import { acceptInvite, createDebate, createInvite, getInvite, roleIn, watchMyDebates } from '../src/data/debates'
 import { addArgument, addNote, editClaim, placeNote, setStance } from '../src/data/map'
 import { addComment, addEvidence, objectWithRestatement, removeEvidence, respondToRestatement, setRestateFirst } from '../src/data/honest'
 import { endRound, startRound } from '../src/data/live'
@@ -728,5 +728,24 @@ describe('Super Admins delegate Admins', () => {
     await assertSucceeds(createImport(superDb(), boss, input))
     const unverified = env.authenticatedContext('fake', { email: 'mendus59@gmail.com', email_verified: false }).firestore() as unknown as Firestore
     await assertFails(createImport(unverified, person('fake', 'mendus59@gmail.com', false), input))
+  })
+})
+
+describe('my debates list', () => {
+  it('lists every debate the user takes part in, newest first, without a composite index', async () => {
+    const ana = { uid: 'ana', displayName: 'Ana', photoURL: null, email: null } as unknown as User
+    const first = await createDebate(db('ana'), ana, { title: 'First', conclusion: 'A', subjects: [], side: 'for' })
+    await new Promise((r) => setTimeout(r, 30))
+    const second = await createDebate(db('ana'), ana, { title: 'Second', conclusion: 'B', subjects: [], side: 'for' })
+    const ids = await new Promise<string[]>((resolve, reject) => {
+      const stop = watchMyDebates(db('ana'), 'ana', (list) => {
+        if (list.length === 2) {
+          stop()
+          resolve(list.map((d) => d.id))
+        }
+      }, reject)
+    })
+    expect(ids).toEqual([second, first])
+    await assertFails(getDocs(query(collection(db('ben'), 'debates'), where('participantUids', 'array-contains', 'ana'))))
   })
 })
