@@ -29,7 +29,7 @@ import { endRound, startRound } from '../src/data/live'
 import { forkClaim, voteOutcome } from '../src/data/subdebates'
 import { watchDebateMap } from '../src/data/debates'
 import { CHUNK, createImport, loadTranscript, searchPublic, searchTermsFor, setVisibility } from '../src/data/imports'
-import { acceptSuggestion, dismissSuggestion, getBudget, publishSummary, recordSpend, saveAnalysis, setCap } from '../src/data/ai'
+import { acceptSuggestion, applyAutoMap, dismissSuggestion, getBudget, publishSummary, recordSpend, saveAnalysis, setCap, undoAutoMap } from '../src/data/ai'
 import { addAdmin, listAdmins, removeAdmin, saveEmailLookup } from '../src/data/admins'
 import type { Debate, DebateMap } from '../src/model/types'
 
@@ -468,6 +468,32 @@ describe('admin import', () => {
     await assertFails(publishSummary(db('ana'), id, result.summary))
     await assertSucceeds(publishSummary(db('pat'), id, result.summary))
     expect(((await getDoc(doc(db('pat'), `debates/${id}`))).data() as Debate).aiSummary?.for).toBe('Free buses pay for themselves.')
+  })
+
+  it('lets the admin auto-map a debate and undo the whole run, keeping their own boxes', async () => {
+    const id = await createImport(db('pat'), patrick, input)
+    const d = (await getDoc(doc(db('pat'), `debates/${id}`))).data() as Debate
+    const target = d.conclusion.claimId
+    await addArgument(db('pat'), patrick, id, 'for', 'reason', target, [{ text: 'Mapped by hand.', type: 'fact' }])
+    const plan = [
+      { target: { existing: target }, kind: 'reason' as const, side: 'for' as const, premises: [{ key: 'p1', text: 'Fares raise little.', type: 'fact' as const, segment: 1 }] },
+      { target: { planned: 'p1' }, kind: 'objection' as const, side: 'against' as const, premises: [{ key: 'p2', text: 'They fund maintenance.', type: 'fact' as const, segment: null }, { key: 'p3', text: 'Maintenance matters.', type: 'value' as const, segment: null }] },
+    ]
+    const run = { model: 'claude-opus-5-5', inputTokens: 10, outputTokens: 10, costUsd: 0.01 }
+    await assertFails(applyAutoMap(db('ana'), user('ana', 'Ana'), id, run, plan, segments))
+    const runId = await assertSucceeds(applyAutoMap(db('pat'), patrick, id, run, plan, segments))
+    const claims = (await getDocs(collection(db('pat'), `debates/${id}/claims`))).docs.map((c) => ({ id: c.id, ...c.data() }))
+    expect(claims.filter((c) => (c as { aiRun?: string }).aiRun === runId)).toHaveLength(3)
+    const p1 = claims.find((c) => (c as { text?: string }).text === 'Fares raise little.') as { id: string; source?: { quote: string } }
+    expect(p1.source?.quote).toBe('Line 1')
+    const links = (await getDocs(collection(db('pat'), `debates/${id}/links`))).docs.map((l) => l.data())
+    expect(links.find((l) => l.kind === 'objection')?.targetClaimId).toBe(p1.id)
+
+    await assertSucceeds(undoAutoMap(db('pat'), id, runId))
+    const left = (await getDocs(collection(db('pat'), `debates/${id}/claims`))).docs.map((c) => c.data().text)
+    expect(left.sort()).toEqual(['Buses should be free.', 'Mapped by hand.'])
+    expect((await getDocs(collection(db('pat'), `debates/${id}/links`))).size).toBe(1)
+    expect((await getDoc(doc(db('pat'), `debates/${id}/analyses/${runId}`))).data()?.undone).toBe(true)
   })
 
   it('builds search terms from whole names and their words', () => {

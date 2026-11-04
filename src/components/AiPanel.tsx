@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { User } from 'firebase/auth'
 import { db } from '../firebase'
-import { buildUserPrompt, cleanResult, costUsd, estimate, formatUsd, monthKey, type Estimate, type Suggestion } from '../ai/analysis'
+import { buildUserPrompt, cleanResult, costUsd, estimate, formatUsd, monthKey, RESULT_SCHEMA, SYSTEM_PROMPT, type Estimate, type Suggestion } from '../ai/analysis'
+import { AUTOMAP_SCHEMA, AUTOMAP_SYSTEM_PROMPT, buildMapPrompt, planAutoMap, premiseCount } from '../ai/automap'
+import type { Job } from '../ai/client'
 import { getApiKey, setApiKey } from '../ai/key'
 import {
   acceptSuggestion,
+  applyAutoMap,
+  undoAutoMap,
+  type AutoMapRun,
   dismissSuggestion,
   getBudget,
   publishSummary,
@@ -30,32 +35,53 @@ const ACCEPT_LABEL: Record<Suggestion['kind'], string> = {
 }
 
 type Budget = { capUsd: number; spentUsd: number; runs: number }
+type JobKind = 'automap' | 'analysis'
+
+const JOB_TEXT: Record<JobKind, { run: string; running: string; declined: string; cut: string }> = {
+  automap: {
+    run: 'Map it',
+    running: 'Mapping the debate from the transcript…',
+    declined: 'The model declined to map this debate.',
+    cut: 'The auto-map was cut off before it finished',
+  },
+  analysis: {
+    run: 'Run analysis',
+    running: 'Analysing the map and transcript…',
+    declined: 'The model declined to analyse this debate.',
+    cut: 'The analysis was cut off before it finished',
+  },
+}
 
 /** Admin-only AI assist for an imported debate, paid for with the admin's own Claude API key. */
 export function AiPanel({
   map,
   user,
   segments,
+  autoStart = false,
   onSelectClaim,
   onSeek,
 }: {
   map: DebateMap
   user: User
   segments: Segment[] | null
+  /** Start an auto-map estimate as soon as the transcript loads (right after an import). */
+  autoStart?: boolean
   onSelectClaim: (id: string) => void
   onSeek: (segment: number) => void
 }) {
   const debateId = map.debate.id
   const [key, setKey] = useState<string | null>(() => getApiKey())
   const [budget, setBudget] = useState<Budget | null>(null)
-  const [analyses, setAnalyses] = useState<Analysis[]>([])
+  const [runs, setRuns] = useState<(Analysis | AutoMapRun)[]>([])
   const [shown, setShown] = useState<string | null>(null)
-  const [est, setEst] = useState<Estimate | null>(null)
-  const [phase, setPhase] = useState<'idle' | 'estimating' | 'running'>('idle')
+  const [est, setEst] = useState<(Estimate & { kind: JobKind }) | null>(null)
+  const [phase, setPhase] = useState<{ step: 'idle' } | { step: 'estimating' | 'running' | 'undoing'; kind: JobKind }>({ step: 'idle' })
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+  const autoStarted = useRef(false)
   const month = monthKey()
 
   useEffect(() => {
@@ -67,28 +93,37 @@ export function AiPanel({
 
   useEffect(
     () =>
-      watchAnalyses(db, debateId, setAnalyses, (e) => {
+      watchAnalyses(db, debateId, (list) => setRuns(list as (Analysis | AutoMapRun)[]), (e) => {
         console.error(e)
-        setError('Saved analyses couldn’t be loaded.')
+        setError('Saved AI runs couldn’t be loaded.')
       }),
     [debateId],
   )
 
   useEffect(() => () => abortRef.current?.abort(), [])
 
-  if (!key) return <KeyForm onSave={(k) => (setApiKey(k), setKey(k))} />
+  const analyses = runs.filter((r): r is Analysis => r.kind !== 'automap')
+  const autoMaps = runs.filter((r): r is AutoMapRun => r.kind === 'automap')
+  const lastMap = autoMaps.find((r) => !r.undone)
+  const mapIsEmpty = !map.claims.some((c) => c.placed && c.id !== map.debate.conclusion.claimId)
 
-  const prompt = segments ? buildUserPrompt(map, segments) : null
-  const overCap = !!(est && budget && budget.spentUsd + est.maxUsd > budget.capUsd)
+  function jobFor(kind: JobKind): Job | null {
+    if (!segments) return null
+    return kind === 'automap'
+      ? { system: AUTOMAP_SYSTEM_PROMPT, user: buildMapPrompt(map, segments), schema: AUTOMAP_SCHEMA as unknown as Record<string, unknown> }
+      : { system: SYSTEM_PROMPT, user: buildUserPrompt(map, segments), schema: RESULT_SCHEMA as unknown as Record<string, unknown> }
+  }
 
-  async function doEstimate() {
-    if (!key || !prompt) return
-    setPhase('estimating')
+  async function doEstimate(kind: JobKind) {
+    const job = jobFor(kind)
+    if (!key || !job) return
+    setPhase({ step: 'estimating', kind })
     setError(null)
+    setNotice(null)
     try {
       const ai = await import('../ai/client')
       try {
-        setEst(estimate(await ai.countInputTokens(key, prompt)))
+        setEst({ kind, ...estimate(await ai.countInputTokens(key, job)) })
       } catch (e) {
         console.error(e)
         setError(ai.describeError(e))
@@ -97,55 +132,97 @@ export function AiPanel({
       console.error(e)
       setError('The AI module couldn’t be loaded. Check your connection.')
     } finally {
-      setPhase('idle')
+      setPhase({ step: 'idle' })
     }
   }
 
+  // Right after an import, go straight to the auto-map estimate. Running it still needs a click.
+  useEffect(() => {
+    if (autoStart && !autoStarted.current && key && segments && mapIsEmpty && !lastMap && phase.step === 'idle' && !est) {
+      autoStarted.current = true
+      void doEstimate('automap')
+    }
+  })
+
+  if (!key) return <KeyForm onSave={(k) => (setApiKey(k), setKey(k))} />
+
+  const overCap = !!(est && budget && budget.spentUsd + est.maxUsd > budget.capUsd)
+
   async function doRun() {
-    if (!key || !prompt || !segments || !budget || overCap) return
+    if (!est) return
+    const kind = est.kind
+    const job = jobFor(kind)
+    if (!key || !job || !segments || !budget || overCap) return
     const controller = new AbortController()
     abortRef.current = controller
-    setPhase('running')
+    setPhase({ step: 'running', kind })
     setProgress(0)
     setError(null)
     const ai = await import('../ai/client').catch(() => null)
     if (!ai) {
-      setPhase('idle')
+      setPhase({ step: 'idle' })
       setError('The AI module couldn’t be loaded. Check your connection.')
       return
     }
     try {
-      const out = await ai.runAnalysis(key, prompt, setProgress, controller.signal)
+      const out = await ai.runJob(key, job, setProgress, controller.signal)
       const cost = costUsd(out.model, out.inputTokens, out.outputTokens)
       await recordSpend(db, user.uid, month, cost)
       setBudget((b) => b && { ...b, spentUsd: b.spentUsd + cost, runs: b.runs + 1 })
       if (!out.json) {
         setError(
           out.stopReason === 'refusal'
-            ? `The model declined to analyse this debate. It still cost ${formatUsd(cost)}.`
-            : `The analysis was cut off before it finished (${out.stopReason ?? 'unknown'}). It cost ${formatUsd(cost)}.`,
+            ? `${JOB_TEXT[kind].declined} It still cost ${formatUsd(cost)}.`
+            : `${JOB_TEXT[kind].cut} (${out.stopReason ?? 'unknown'}). It cost ${formatUsd(cost)}.`,
         )
         return
       }
-      const result = cleanResult(out.json, map, segments.length)
-      const id = await saveAnalysis(db, user, debateId, { model: out.model, inputTokens: out.inputTokens, outputTokens: out.outputTokens, costUsd: cost }, result)
-      setShown(id)
+      const info = { model: out.model, inputTokens: out.inputTokens, outputTokens: out.outputTokens, costUsd: cost }
+      if (kind === 'automap') {
+        const plan = planAutoMap(out.json, map, segments.length)
+        if (!plan.length) {
+          setError(`Claude found nothing new to map. It cost ${formatUsd(cost)}.`)
+          return
+        }
+        await applyAutoMap(db, user, debateId, info, plan, segments)
+        setNotice(`Added ${premiseCount(plan)} boxes in ${plan.length} arguments. Check them over, or undo the whole run.`)
+      } else {
+        const id = await saveAnalysis(db, user, debateId, info, cleanResult(out.json, map, segments.length))
+        setShown(id)
+      }
       setEst(null)
     } catch (e) {
       console.error(e)
       setError(ai.describeError(e))
     } finally {
       abortRef.current = null
-      setPhase('idle')
+      setPhase({ step: 'idle' })
+    }
+  }
+
+  async function doUndo(run: AutoMapRun) {
+    if (!confirm(`Take the ${run.boxes} auto-mapped boxes off the map? Boxes you added yourself stay.`)) return
+    setPhase({ step: 'undoing', kind: 'automap' })
+    setError(null)
+    setNotice(null)
+    try {
+      await undoAutoMap(db, debateId, run.id)
+      setNotice('The auto-map was removed.')
+    } catch (e) {
+      console.error(e)
+      setError('The auto-map couldn’t be removed. Try again.')
+    } finally {
+      setPhase({ step: 'idle' })
     }
   }
 
   const current = analyses.find((a) => a.id === shown) ?? analyses[0]
+  const busy = phase.step !== 'idle'
 
   return (
     <section className="stack-sm ai-panel">
       <div className="row-sm between">
-        <span className="eyebrow">AI analysis</span>
+        <span className="eyebrow">AI</span>
         <button className="linklike small" type="button" onClick={() => setSettingsOpen((o) => !o)}>
           {settingsOpen ? 'Close settings' : 'Settings'}
         </button>
@@ -169,9 +246,11 @@ export function AiPanel({
           {budget.runs ? ` across ${budget.runs} run${budget.runs === 1 ? '' : 's'}` : ''}.
         </p>
       )}
-      {phase === 'running' ? (
+      {phase.step === 'running' ? (
         <div className="box stack-xs">
-          <p className="small">Analysing the map and transcript… {progress ? `${progress.toLocaleString()} characters written.` : 'Thinking first.'}</p>
+          <p className="small">
+            {JOB_TEXT[phase.kind].running} {progress ? `${progress.toLocaleString()} characters written.` : 'Thinking first.'}
+          </p>
           <button className="btn small-btn" type="button" onClick={() => abortRef.current?.abort()}>
             Stop
           </button>
@@ -179,6 +258,7 @@ export function AiPanel({
         </div>
       ) : est ? (
         <div className="box stack-xs">
+          <span className="eyebrow">{est.kind === 'automap' ? 'Map automatically' : 'Analysis'}</span>
           <p className="small">
             {est.inputTokens.toLocaleString()} input tokens. Likely about <strong>{formatUsd(est.likelyUsd)}</strong>, at most{' '}
             <strong>{formatUsd(est.maxUsd)}</strong>.
@@ -186,7 +266,7 @@ export function AiPanel({
           {overCap && <p className="small error">That could pass your monthly cap. Raise the cap in Settings to run it.</p>}
           <div className="row-sm">
             <button className="btn pri small-btn" type="button" onClick={doRun} disabled={overCap}>
-              Run analysis
+              {JOB_TEXT[est.kind].run}
             </button>
             <button className="btn small-btn" type="button" onClick={() => setEst(null)}>
               Cancel
@@ -194,12 +274,28 @@ export function AiPanel({
           </div>
         </div>
       ) : (
-        <button className="btn small-btn" type="button" onClick={doEstimate} disabled={!prompt || phase === 'estimating'}>
-          {phase === 'estimating' ? 'Estimating…' : analyses.length ? 'Analyse again' : 'Estimate an analysis'}
-        </button>
+        <div className="stack-xs">
+          <button className="btn pri small-btn" type="button" onClick={() => doEstimate('automap')} disabled={!segments || busy}>
+            {phase.step === 'estimating' && phase.kind === 'automap' ? 'Estimating…' : mapIsEmpty ? 'Map automatically' : 'Extend the map automatically'}
+          </button>
+          <button className="btn small-btn" type="button" onClick={() => doEstimate('analysis')} disabled={!segments || busy}>
+            {phase.step === 'estimating' && phase.kind === 'analysis' ? 'Estimating…' : analyses.length ? 'Analyse again' : 'Find hidden premises and fallacies'}
+          </button>
+        </div>
       )}
       {!segments && <small className="muted">Waiting for the transcript to load.</small>}
+      {notice && <small>{notice}</small>}
       {error && <small className="error">{error}</small>}
+      {lastMap && (
+        <div className="box stack-xs">
+          <span className="small">
+            Auto-mapped {lastMap.boxes} boxes in {lastMap.arguments} arguments · {formatUsd(lastMap.costUsd)}. They carry an AI badge.
+          </span>
+          <button className="linklike small" type="button" onClick={() => doUndo(lastMap)} disabled={busy}>
+            {phase.step === 'undoing' ? 'Removing…' : 'Undo this auto-map'}
+          </button>
+        </div>
+      )}
       {current && (
         <AnalysisView
           map={map}
