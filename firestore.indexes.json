@@ -1,13 +1,4 @@
 {
-  "indexes": [
-    {
-      "collectionGroup": "debates",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "participantUids", "arrayConfig": "CONTAINS" },
-        { "fieldPath": "updatedAt", "order": "DESCENDING" }
-      ]
-    }
-  ],
+  "indexes": [],
   "fieldOverrides": []
 }

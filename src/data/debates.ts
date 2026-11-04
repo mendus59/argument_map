@@ -3,7 +3,6 @@ import {
   doc,
   getDoc,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
   setDoc,
@@ -96,10 +95,18 @@ export async function createDebate(db: Firestore, user: User, input: NewDebateIn
 
 /** Live list of debates the user takes part in or can read. */
 export function watchMyDebates(db: Firestore, uid: string, onChange: (debates: Debate[]) => void, onError: (e: Error) => void) {
-  const q = query(collection(db, 'debates'), where('participantUids', 'array-contains', uid), orderBy('updatedAt', 'desc'))
+  // Sorted here rather than with orderBy: array-contains plus orderBy needs a composite
+  // index that the Firebase project doesn't have, and the query fails without it.
+  const q = query(collection(db, 'debates'), where('participantUids', 'array-contains', uid))
+  const millis = (v: unknown) => (v as { toMillis?: () => number } | undefined)?.toMillis?.() ?? Number.MAX_SAFE_INTEGER
   return onSnapshot(
     q,
-    (snap) => onChange(snap.docs.map((d) => ({ ...(d.data() as Omit<Debate, 'id'>), id: d.id }))),
+    (snap) =>
+      onChange(
+        snap.docs
+          .map((d) => ({ ...(d.data() as Omit<Debate, 'id'>), id: d.id }))
+          .sort((a, b) => millis((b as { updatedAt?: unknown }).updatedAt) - millis((a as { updatedAt?: unknown }).updatedAt)),
+      ),
     onError,
   )
 }
