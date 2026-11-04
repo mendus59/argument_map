@@ -30,6 +30,7 @@ import { forkClaim, voteOutcome } from '../src/data/subdebates'
 import { watchDebateMap } from '../src/data/debates'
 import { CHUNK, createImport, loadTranscript, searchPublic, searchTermsFor, setVisibility } from '../src/data/imports'
 import { acceptSuggestion, dismissSuggestion, getBudget, publishSummary, recordSpend, saveAnalysis, setCap } from '../src/data/ai'
+import { addAdmin, listAdmins, removeAdmin, saveEmailLookup } from '../src/data/admins'
 import type { Debate, DebateMap } from '../src/model/types'
 
 let env: RulesTestEnvironment
@@ -643,5 +644,63 @@ describe('sub-debates (milestone 5)', () => {
     const done = await debateOf('ana', sub)
     expect(done.status).toBe('resolved')
     expect(done.outcome).toBe('accepted')
+  })
+})
+
+describe('Super Admins delegate Admins', () => {
+  const person = (uid: string, email: string, verified = true) =>
+    ({ uid, displayName: uid.toUpperCase(), photoURL: null, email, emailVerified: verified }) as unknown as User
+  const superDb = () => env.authenticatedContext('boss', { email: 'Mendus59@gmail.com', email_verified: true }).firestore() as unknown as Firestore
+  const asEmail = (uid: string, email: string, verified = true) =>
+    env.authenticatedContext(uid, { email, email_verified: verified }).firestore() as unknown as Firestore
+  const boss = person('boss', 'mendus59@gmail.com')
+
+  it('lets each user record only their own verified email, readable only by Super Admins', async () => {
+    const zoe = person('zoe', 'zoe@example.com')
+    await assertSucceeds(saveEmailLookup(asEmail('zoe', 'zoe@example.com'), zoe))
+    await assertFails(setDoc(doc(asEmail('zoe', 'zoe@example.com'), 'emails/boss@example.com'), { uid: 'zoe', name: 'Z' }))
+    await assertFails(setDoc(doc(asEmail('zoe', 'zoe@example.com'), 'emails/zoe@example.com'), { uid: 'someone-else', name: 'Z' }))
+    await assertFails(setDoc(doc(asEmail('una', 'una@example.com', false), 'emails/una@example.com'), { uid: 'una', name: 'U' }))
+    await assertFails(getDoc(doc(asEmail('zoe', 'zoe@example.com'), 'emails/zoe@example.com')))
+    await assertSucceeds(getDoc(doc(superDb(), 'emails/zoe@example.com')))
+  })
+
+  it('lets a Super Admin add, list and remove Admins by email, and nobody else', async () => {
+    const zoe = person('zoe', 'zoe@example.com')
+    const zoeDb = asEmail('zoe', 'zoe@example.com')
+    await saveEmailLookup(zoeDb, zoe)
+    expect(await addAdmin(superDb(), boss, 'nobody@example.com')).toEqual({ ok: false, reason: 'not-signed-up' })
+    await assertFails(setDoc(doc(zoeDb, 'admins/zoe'), { email: 'zoe@example.com', name: 'Z', addedBy: 'zoe' }))
+    await assertFails(addAdmin(zoeDb, zoe, 'zoe@example.com'))
+    // A Super Admin can't point an email at the wrong account.
+    await assertFails(setDoc(doc(superDb(), 'admins/eve'), { email: 'zoe@example.com', name: 'Z', addedBy: 'boss' }))
+
+    const r = await assertSucceeds(addAdmin(superDb(), boss, ' ZOE@example.com '))
+    expect(r).toMatchObject({ ok: true, entry: { uid: 'zoe', email: 'zoe@example.com' } })
+    expect(await addAdmin(superDb(), boss, 'zoe@example.com')).toEqual({ ok: false, reason: 'already' })
+    expect((await listAdmins(superDb())).map((a) => a.uid)).toEqual(['zoe'])
+    await assertFails(listAdmins(zoeDb))
+
+    // The new Admin can import; removing them takes that away.
+    const input = {
+      title: 'T', conclusion: 'C', subjects: [], labels: { for: 'A', against: 'B' },
+      source: { kind: 'transcript' as const, url: null, videoId: null, title: 'T', channel: null, speakers: [] },
+      segments: [{ start: null, speaker: null, text: 'x' }],
+    }
+    await assertSucceeds(createImport(zoeDb, zoe, input))
+    await assertFails(removeAdmin(zoeDb, 'zoe'))
+    await assertSucceeds(removeAdmin(superDb(), 'zoe'))
+    await assertFails(createImport(zoeDb, zoe, input))
+  })
+
+  it('treats the Super Admin as an Admin without any admins document', async () => {
+    const input = {
+      title: 'T', conclusion: 'C', subjects: [], labels: { for: 'A', against: 'B' },
+      source: { kind: 'transcript' as const, url: null, videoId: null, title: 'T', channel: null, speakers: [] },
+      segments: [{ start: null, speaker: null, text: 'x' }],
+    }
+    await assertSucceeds(createImport(superDb(), boss, input))
+    const unverified = env.authenticatedContext('fake', { email: 'mendus59@gmail.com', email_verified: false }).firestore() as unknown as Firestore
+    await assertFails(createImport(unverified, person('fake', 'mendus59@gmail.com', false), input))
   })
 })

@@ -2,6 +2,7 @@ import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, update
 import type { User } from 'firebase/auth'
 import type { Debate, DebateSource, SideId } from '../model/types'
 import type { Segment } from '../import/transcript'
+import { isSuperAdminUser } from './admins'
 
 /** Segments per transcript document. Keeps each document well under Firestore's 1 MB limit. */
 export const CHUNK = 500
@@ -9,6 +10,7 @@ export const CHUNK = 500
 /** True when the user has an admins/{uid} document or the admin custom claim. */
 export async function checkAdmin(db: Firestore, user: User): Promise<boolean> {
   try {
+    if (isSuperAdminUser(user)) return true
     const token = await user.getIdTokenResult()
     if (token.claims.admin === true) return true
     return (await getDoc(doc(db, 'admins', user.uid))).exists()

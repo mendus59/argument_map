@@ -270,3 +270,8 @@ input.input[type="search"] { padding: 9px 11px; font-size: 15px; }
 /* AI assist */
 .badge.ai { background: var(--sunk); color: var(--muted); font-weight: 600; letter-spacing: .04em; }
 .ai-list { list-style: none; padding: 0; margin: 0; }
+
+/* Admins page */
+.debate-item.admin-row { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; text-align: left; }
+.admin-row .tag { flex: none; }
+.admin-row .stack-xs { align-items: flex-start; }

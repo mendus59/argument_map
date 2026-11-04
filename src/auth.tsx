@@ -3,12 +3,15 @@ import { onAuthStateChanged, signInWithPopup, signOut as fbSignOut, type User } 
 import { auth, db, googleProvider } from './firebase'
 import { saveProfile } from './data/debates'
 import { checkAdmin } from './data/imports'
+import { isSuperAdminUser, saveEmailLookup } from './data/admins'
 
 interface AuthState {
   user: User | null
   loading: boolean
-  /** True for the app admin, who can import debates. */
+  /** True for an Admin or Super Admin, who can import debates and run AI. */
   isAdmin: boolean
+  /** True for a Super Admin, who can add and remove Admins. */
+  isSuperAdmin: boolean
   signIn: () => Promise<void>
   signOut: () => Promise<void>
 }
@@ -28,6 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAdmin(false)
         if (u) {
           saveProfile(db, u).catch((e) => console.error('Could not save profile', e))
+          saveEmailLookup(db, u).catch((e) => console.error('Could not save email lookup', e))
           checkAdmin(db, u).then(setIsAdmin)
         }
       }),
@@ -38,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     loading,
     isAdmin,
+    isSuperAdmin: isSuperAdminUser(user),
     signIn: async () => {
       await signInWithPopup(auth, googleProvider)
     },

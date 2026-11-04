@@ -7,6 +7,7 @@ import InvitePage from './pages/InvitePage'
 import SamplePage from './pages/SamplePage'
 import ImportPage from './pages/ImportPage'
 import LibraryPage from './pages/LibraryPage'
+import AdminPage from './pages/AdminPage'
 
 export default function App() {
   return (
@@ -19,7 +20,7 @@ export default function App() {
 }
 
 function Shell() {
-  const { user, loading, signOut } = useAuth()
+  const { user, loading, signOut, isSuperAdmin } = useAuth()
   return (
     <div className="app">
       <nav className="topbar">
@@ -30,6 +31,11 @@ function Shell() {
           <Link to="/library" className="small nav-link">
             Library
           </Link>
+          {isSuperAdmin && (
+            <Link to="/admin" className="small nav-link">
+              Admins
+            </Link>
+          )}
         </div>
         {user && (
           <div className="row-sm">
@@ -50,6 +56,7 @@ function Shell() {
           <Route path="/invite/:token" element={<InvitePage />} />
           <Route path="/new" element={user ? <NewDebatePage /> : <Navigate to="/" replace />} />
           <Route path="/library" element={<LibraryPage />} />
+          <Route path="/admin" element={user ? <AdminPage /> : <Navigate to="/" replace />} />
           <Route path="/import" element={user ? <ImportPage /> : <Navigate to="/" replace />} />
           <Route path="/d/:id" element={<DebatePage />} />
           <Route path="*" element={<p className="page narrow">This page doesn’t exist. <Link to="/">Go home</Link></p>} />
