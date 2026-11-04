@@ -7,10 +7,15 @@ service cloud.firestore {
 
     function signedIn() { return request.auth != null; }
     function uid() { return request.auth.uid; }
-    // The admin is marked by a custom claim, or by a document at admins/{uid}
-    // created by hand in the Firebase console.
+    // Super Admins are fixed by verified email (keep in step with SUPER_ADMIN_EMAILS in
+    // src/data/admins.ts). They add and remove Admins from the app's Admin page.
+    function isSuperAdmin() {
+      return signedIn() && request.auth.token.get('email_verified', false) == true
+        && request.auth.token.get('email', '').lower() in ['mendus59@gmail.com'];
+    }
+    // An Admin has a document at admins/{uid}, written by a Super Admin (or the custom claim).
     function isAdmin() {
-      return signedIn() && (request.auth.token.get('admin', false) == true
+      return signedIn() && (isSuperAdmin() || request.auth.token.get('admin', false) == true
         || exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
     }
     function otherSide(side) { return side == 'for' ? 'against' : 'for'; }
@@ -50,9 +55,28 @@ service cloud.firestore {
     }
 
     // ---- Admins ------------------------------------------------------------
-    // Written only from the console. Each user may check whether they are one.
+    // Each user may check whether they are one. Super Admins list, add and remove them.
     match /admins/{userId} {
       allow get: if signedIn() && uid() == userId;
+      allow read, delete: if isSuperAdmin();
+      allow create: if isSuperAdmin()
+        && request.resource.data.keys().hasOnly(['email', 'name', 'addedBy', 'addedAt'])
+        && request.resource.data.addedBy == uid()
+        && request.resource.data.email is string
+        && exists(/databases/$(database)/documents/emails/$(request.resource.data.email))
+        && get(/databases/$(database)/documents/emails/$(request.resource.data.email)).data.uid == userId;
+    }
+
+    // Which account a verified email belongs to, so Super Admins can add Admins by email.
+    // Each user writes only their own; only Super Admins read them.
+    match /emails/{email} {
+      allow get: if isSuperAdmin();
+      allow create, update: if signedIn()
+        && request.auth.token.get('email_verified', false) == true
+        && request.auth.token.get('email', '').lower() == email
+        && request.resource.data.uid == uid()
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'updatedAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 200;
     }
 
     // ---- Debates -----------------------------------------------------------

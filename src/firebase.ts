@@ -20,9 +20,9 @@ if (import.meta.env.VITE_USE_EMULATORS === 'true') {
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true })
   connectFirestoreEmulator(db, '127.0.0.1', 8080)
   // Emulator-only helper for automated browser tests: sign in as a fake Google user.
-  ;(window as unknown as { __signInAs: (name: string) => Promise<unknown> }).__signInAs = (name: string) =>
+  ;(window as unknown as { __signInAs: (name: string, email?: string) => Promise<unknown> }).__signInAs = (name: string, email?: string) =>
     signInWithCredential(
       auth,
-      GoogleAuthProvider.credential(JSON.stringify({ sub: name.toLowerCase(), email: `${name.toLowerCase()}@example.com`, email_verified: true, name })),
+      GoogleAuthProvider.credential(JSON.stringify({ sub: name.toLowerCase(), email: email ?? `${name.toLowerCase()}@example.com`, email_verified: true, name })),
     )
 }

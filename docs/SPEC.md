@@ -18,7 +18,8 @@ Out of scope for v1: open or social debates, audience participation, AI features
 
 | Role | Who | Can do |
 | --- | --- | --- |
-| Admin | Patrick (a document at `admins/{uid}`, created by hand in the Firebase console, or the custom claim `admin: true`) | Import debates, run AI assist and transcription, set visibility, invite readers, see AI spend |
+| Super Admin | mendus59@gmail.com, fixed by verified email in `firestore.rules` and `src/data/admins.ts`. Is also an Admin | Add and remove Admins by email on the Admins page (`/admin`) |
+| Admin | Anyone a Super Admin adds (a document at `admins/{uid}`) | Import debates, run AI assist and transcription, set visibility, invite readers, see AI spend |
 | Team leader | The person who creates a side (the debate creator leads their side and invites the other side's leader) | Everything a member can, plus set the team's stance on every box, manage membership, mark sub-debates resolved, maintain the side's boxes |
 | Team member | Invited by their leader | Add boxes, notes, comments, sources; refute; open sub-debates |
 | Reader | Invited by a leader or the admin | View only |
