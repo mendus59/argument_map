@@ -16,6 +16,11 @@
   --unsure: #a8740c;
   --unsure-soft: #f7ecd2;
   --value: #7a3fa8;
+  /* Who argued a box. Kept apart from green/red, which mean supports/objects. */
+  --side-for: #2f5fc4;
+  --side-for-soft: #e2eafb;
+  --side-against: #c26a00;
+  --side-against-soft: #fbecd9;
   --display: 'Literata', Georgia, serif;
   --body: 'Public Sans', system-ui, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -38,6 +43,10 @@
     --unsure: #e6b450;
     --unsure-soft: #3f3216;
     --value: #c99bf0;
+    --side-for: #86a8ff;
+    --side-for-soft: #222f4f;
+    --side-against: #f0a64a;
+    --side-against-soft: #43301a;
     color-scheme: dark;
   }
 }
@@ -102,8 +111,8 @@ a { color: var(--accent); }
 .debate-head h1 { font-size: 20px; margin-top: 2px; }
 .sides { display: flex; gap: 8px; flex-wrap: wrap; font-size: 13px; }
 .side, .depth { padding: 3px 10px; border-radius: 999px; }
-.side.for { background: var(--accent-soft); }
-.side.against { background: var(--sunk); }
+.side.for { background: var(--side-for-soft); color: var(--side-for); font-weight: 600; }
+.side.against { background: var(--side-against-soft); color: var(--side-against); font-weight: 600; }
 .depth { border: 1px solid var(--line); color: var(--muted); }
 
 .workspace { flex: 1; display: grid; grid-template-columns: 1fr 280px; min-height: 0; }
@@ -121,6 +130,35 @@ a { color: var(--accent); }
 .claim-node.reason { border-color: var(--agree); }
 .claim-node.objection { border-color: var(--dis); }
 .claim-text { margin: 0; flex: 1; }
+/* Side: a coloured edge down the left and a named tag at the top of every box. */
+.claim-node.side-for { box-shadow: inset 5px 0 0 var(--side-for); padding-left: 16px; }
+.claim-node.side-against { box-shadow: inset 5px 0 0 var(--side-against); padding-left: 16px; }
+.claim-node.side-for.selected { box-shadow: inset 5px 0 0 var(--side-for), 0 0 0 3px var(--accent); }
+.claim-node.side-against.selected { box-shadow: inset 5px 0 0 var(--side-against), 0 0 0 3px var(--accent); }
+.claim-node.side-for.new { box-shadow: inset 5px 0 0 var(--side-for), 0 0 0 3px color-mix(in srgb, var(--unsure) 70%, transparent); }
+.claim-node.side-against.new { box-shadow: inset 5px 0 0 var(--side-against), 0 0 0 3px color-mix(in srgb, var(--unsure) 70%, transparent); }
+.node-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
+.node-head .kind { flex-shrink: 0; }
+.side-tag { display: inline-flex; align-items: center; gap: 5px; min-width: 0; font-size: 11.5px; font-weight: 700; padding: 2px 8px 2px 6px; border-radius: 999px; }
+.side-tag.for { background: var(--side-for-soft); color: var(--side-for); }
+.side-tag.against { background: var(--side-against-soft); color: var(--side-against); }
+.side-tag .side-name, .side-tag .side-by { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-tag .side-name { flex-shrink: 0; max-width: 130px; }
+.side-by { font-weight: 500; opacity: 0.85; }
+.side-by::before { content: '· '; }
+.side-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.side-dot.for { background: var(--side-for); }
+.side-dot.against { background: var(--side-against); }
+.chip .side-dot { margin-right: 4px; vertical-align: 0; }
+.group-side { display: inline-flex; align-items: center; gap: 4px; text-transform: none; letter-spacing: 0; font-family: var(--body); font-size: 11px; font-weight: 700; padding: 0 7px 0 5px; border-radius: 999px; }
+.group-side.for { background: var(--side-for-soft); color: var(--side-for); }
+.group-side.against { background: var(--side-against-soft); color: var(--side-against); }
+.map-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; max-width: min(520px, calc(100vw - 48px)); font-size: 12px; padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--surface) 92%, transparent); border: 1px solid var(--line); color: var(--ink); }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.legend-item.muted { font-weight: 500; color: var(--muted); }
+.legend-line { display: inline-block; width: 18px; height: 3px; border-radius: 2px; }
+.legend-line.reason { background: var(--agree); }
+.legend-line.objection { background: var(--dis); }
 .kind { align-self: flex-start; font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; border: 1px solid currentColor; color: var(--muted); }
 .kind-fact { color: var(--accent); }
 .kind-prediction { color: var(--unsure); }
@@ -192,10 +230,10 @@ textarea.input.mono { font-size: 12.5px; }
 .transcript .ts:disabled { cursor: default; }
 .transcript .ts:not(:disabled):hover { color: var(--accent); text-decoration: underline; }
 .spk { display: inline-block; font-size: 11px; font-weight: 700; padding: 0 6px; margin-right: 6px; border-radius: 4px; background: var(--sunk); color: var(--muted); user-select: none; -webkit-user-select: none; }
-.spk.for { background: var(--accent-soft); color: var(--accent); }
-.spk.against { background: var(--dis-soft); color: var(--dis); }
-.mapped { font: inherit; font-size: 11px; font-weight: 600; margin-left: 6px; border: 0; padding: 0 6px; border-radius: 4px; cursor: pointer; background: var(--agree-soft); color: var(--agree); user-select: none; -webkit-user-select: none; }
-.mapped.against { background: var(--dis-soft); color: var(--dis); }
+.spk.for { background: var(--side-for-soft); color: var(--side-for); }
+.spk.against { background: var(--side-against-soft); color: var(--side-against); }
+.mapped { font: inherit; font-size: 11px; font-weight: 600; margin-left: 6px; border: 0; padding: 0 6px; border-radius: 4px; cursor: pointer; background: var(--side-for-soft); color: var(--side-for); user-select: none; -webkit-user-select: none; }
+.mapped.against { background: var(--side-against-soft); color: var(--side-against); }
 .quote-bar { position: absolute; left: 10px; right: 10px; bottom: 10px; background: var(--surface); border: 1.5px solid var(--accent); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); }
 .source-quote { margin: 0; padding: 8px 10px; border-left: 3px solid var(--line); background: var(--surface); border-radius: 0 6px 6px 0; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
 .badge.time { background: var(--muted); }
@@ -220,8 +258,8 @@ input.input[type="search"] { padding: 9px 11px; font-size: 15px; }
 .ev-news { background: var(--accent-soft); color: var(--accent); }
 .ev-opinion, .ev-anecdote { background: var(--unsure-soft); color: var(--unsure); }
 .comment { border-left: 3px solid var(--line); padding: 4px 0 4px 10px; display: flex; flex-direction: column; gap: 2px; }
-.comment.for { border-left-color: var(--accent); }
-.comment.against { border-left-color: var(--dis); }
+.comment.for { border-left-color: var(--side-for); }
+.comment.against { border-left-color: var(--side-against); }
 .comment.restatement { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--surface); gap: 6px; }
 .comment.restatement.pending { border-color: var(--unsure); }
 .comment.restatement.confirmed { border-color: var(--agree); }
@@ -244,12 +282,14 @@ input.input[type="search"] { padding: 9px 11px; font-size: 15px; }
 .claim-node { position: relative; }
 .claim-node.new { box-shadow: 0 0 0 3px color-mix(in srgb, var(--unsure) 70%, transparent); }
 .claim-node.new.selected { box-shadow: 0 0 0 3px var(--accent); }
+.claim-node.side-for.new.selected { box-shadow: inset 5px 0 0 var(--side-for), 0 0 0 3px var(--accent); }
+.claim-node.side-against.new.selected { box-shadow: inset 5px 0 0 var(--side-against), 0 0 0 3px var(--accent); }
 .new-badge { position: absolute; top: -9px; right: 10px; background: var(--unsure); }
 .writing { position: absolute; bottom: -20px; left: 4px; font-size: 11px; color: var(--accent); font-style: italic; white-space: nowrap; }
 .activity { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .activity li { border-left: 3px solid var(--line); padding: 2px 0 2px 8px; }
-.activity li.for { border-left-color: var(--accent); }
-.activity li.against { border-left-color: var(--dis); }
+.activity li.for { border-left-color: var(--side-for); }
+.activity li.against { border-left-color: var(--side-against); }
 .activity li.fresh { background: var(--unsure-soft); border-radius: 0 6px 6px 0; }
 .activity .linklike { text-align: left; }
 
