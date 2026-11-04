@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import { Background, Controls, MarkerType, ReactFlow, ReactFlowProvider, useReactFlow, type Edge } from '@xyflow/react'
+import { Background, Controls, MarkerType, Panel, ReactFlow, ReactFlowProvider, useReactFlow, type Edge } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { DebateMap } from '../model/types'
 import { findCruxes, stanceOf } from '../model/crux'
@@ -42,10 +42,14 @@ function FitOnGrowth({ count }: { count: number }) {
 }
 
 function MapCanvas({ map, selection, onSelect, highlight, writers, subs }: Props) {
-  const { nodes, edges } = useMemo(() => {
+  const { nodes, edges, sides } = useMemo(() => {
     const layout = layoutMap(map)
     const cruxes = findCruxes(map)
     // An objection aimed at a premise of another objection reads as a rebuttal.
+    const sides = { for: map.debate.sides.for.label || 'For', against: map.debate.sides.against.label || 'Against' }
+    // On an imported debate the poster is the admin who mapped it, not a debater, so only the speaker counts.
+    const imported = map.debate.origin === 'imported'
+    const byOf = (c: (typeof map.claims)[number]) => c.source?.speaker ?? (imported ? null : (map.debate.people[c.authorUid]?.name ?? null))
     const objectionPremises = new Set(map.links.filter((l) => l.kind === 'objection').flatMap((l) => l.premiseClaimIds))
     const groups: GroupNodeType[] = layout.groups.map((g) => ({
       id: 'group-' + g.link.id,
@@ -56,6 +60,7 @@ function MapCanvas({ map, selection, onSelect, highlight, writers, subs }: Props
         isRebuttal: objectionPremises.has(g.link.targetClaimId),
         stances: { for: stanceOf(map, g.link.id, 'for'), against: stanceOf(map, g.link.id, 'against') },
         selected: selection?.kind === 'link' && selection.id === g.link.id,
+        sides,
       },
       style: { width: g.width, height: g.height },
       draggable: false,
@@ -77,6 +82,8 @@ function MapCanvas({ map, selection, onSelect, highlight, writers, subs }: Props
         isNew: !!highlight?.has(p.claim.id),
         writers: writers?.get(p.claim.id) ?? [],
         sub: subs?.get(p.claim.id),
+        sides,
+        by: byOf(p.claim),
       },
       style: { width: CLAIM_W },
       draggable: false,
@@ -94,7 +101,7 @@ function MapCanvas({ map, selection, onSelect, highlight, writers, subs }: Props
         markerEnd: { type: MarkerType.ArrowClosed, color },
       }
     })
-    return { nodes: [...groups, ...claims], edges }
+    return { nodes: [...groups, ...claims], edges, sides }
   }, [map, selection, highlight, writers, subs])
 
   return (
@@ -114,7 +121,34 @@ function MapCanvas({ map, selection, onSelect, highlight, writers, subs }: Props
         <FitOnGrowth count={nodes.length} />
         <Background gap={24} />
         <Controls showInteractive={false} />
+        <Panel position="top-left">
+          <MapLegend sides={sides} />
+        </Panel>
       </ReactFlow>
+    </div>
+  )
+}
+
+/** Says which colour is which side, and what the arrows mean. */
+function MapLegend({ sides }: { sides: { for: string; against: string } }) {
+  return (
+    <div className="map-legend" aria-label="Map key">
+      <span className="legend-item">
+        <span className="side-dot for" aria-hidden="true" />
+        {sides.for}
+      </span>
+      <span className="legend-item">
+        <span className="side-dot against" aria-hidden="true" />
+        {sides.against}
+      </span>
+      <span className="legend-item muted">
+        <span className="legend-line reason" aria-hidden="true" />
+        supports
+      </span>
+      <span className="legend-item muted">
+        <span className="legend-line objection" aria-hidden="true" />
+        objects
+      </span>
     </div>
   )
 }
