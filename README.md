@@ -1,5 +1,16 @@
 # Parrhesia
 
+<!-- site-summary:start -->
+<!-- This section is this project's card on https://mendus59.github.io and is copied there daily.
+     Keep it true of what's on main: one plain-text summary line (max 160 characters), then 1-6 short bullets.
+     See CLAUDE.md ("Site summary"). -->
+Parrhesia: lay out debates as shared argument maps and debate more constructively.
+
+- Two people or teams build a shared map of premises, reasons, objections and conclusions, and record where each side stands on every box.
+- Fork a pivotal premise into its own sub-debate.
+- Honest-debate tools: restate before you rebut, confidence on every stance, crux highlighting and a "fair point" concession.
+<!-- site-summary:end -->
+
 Parrhesia (pa-REE-zha, Greek for frank and honest speech) is a web app for laying out debates as argument maps and debating more constructively. Two people or two teams build a shared map of premises, reasons, objections and conclusions, record where each side stands on every box, and fork pivotal premises into sub-debates.
 
 See [docs/SPEC.md](docs/SPEC.md) for the v1 spec and milestones.
