@@ -67,3 +67,22 @@ describe('phrases', () => {
     )
   })
 })
+
+describe('reused agreed claims', () => {
+  const c = { id: 'p', text: 'x', type: 'value' as const, authorUid: 'a', side: 'for' as const, placed: true, version: 2 }
+  const acc = (version: number) => [{ claimId: 'p', side: 'against' as const, version, value: 'accepted' as const, by: 'b' }]
+  const src = (claim: typeof c | null, version: number) => ({ claim, acceptances: acc(version), terms: [], definitions: [], rewordings: [] })
+  it('follows the original, and counts a reuse of an older wording as changed', async () => {
+    const { groundedStatus } = await import('./agreement')
+    expect(groundedStatus(src(c, 2), 2).status).toBe('agreed')
+    expect(groundedStatus(src(c, 1), 2).status).toBe('changed')
+    expect(groundedStatus(src(c, 2), 1).status).toBe('changed')
+    expect(groundedStatus(src(null, 2), 2).status).toBe('disputed')
+  })
+  it('spots agreed wording that a draft goes against', async () => {
+    const { wordingSlips } = await import('./agreement')
+    const w = [{ phrase: 'illegal immigrant', replacement: 'undocumented immigrant' }]
+    expect(wordingSlips('Every illegal immigrant should leave', w)).toHaveLength(1)
+    expect(wordingSlips('Every undocumented immigrant should leave', w)).toHaveLength(0)
+  })
+})

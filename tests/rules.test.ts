@@ -830,3 +830,53 @@ describe('agreeing claims', () => {
     await assertSucceeds(declineRewording(db('ana'), ana, 'd1', r2, 'All buses, not only city ones'))
   })
 })
+
+describe('common ground between two people', () => {
+  const user = (uid: string, name: string) => ({ uid, displayName: name, photoURL: null, email: null }) as unknown as User
+  const ana = user('ana', 'Ana')
+  const ben = user('ben', 'Ben')
+  const pair = 'ana_ben'
+  const claim = async (id = 'c') => ({ ...(await getDoc(doc(db('ana'), `debates/d1/claims/${id}`))).data(), id }) as unknown as import('../src/model/types').Claim
+
+  beforeEach(async () => {
+    await seedDebate()
+    await setDoc(doc(db('ana'), 'invites/t-lead'), invite('ana', 'leader', 'against'))
+    await setDoc(doc(db('ana'), 'invites/t-read'), invite('ana', 'reader', null))
+    await join('ben', 't-lead', 'leader', 'against')
+    await join('rita', 't-read', 'reader', null)
+  })
+
+  it('adds an accepted claim to the pair’s common ground, readable only by the two of them', async () => {
+    await assertSucceeds(answerClaim(db('ben'), ben, 'd1', await claim(), 'against', 'accepted', pair))
+    const entry = await getDoc(doc(db('ana'), `pairs/${pair}/ground/d1__c`))
+    expect(entry.data()?.text).toBe('Buses should be free.')
+    await assertFails(getDoc(doc(db('rita'), `pairs/${pair}/ground/d1__c`)))
+    // An edit takes it off again.
+    await assertSucceeds(editClaim(db('ana'), ana, 'd1', 'c', 'Buses should be fare-free.', 'value', pair))
+    expect((await getDoc(doc(db('ana'), `pairs/${pair}/ground/d1__c`))).exists()).toBe(false)
+  })
+
+  it('refuses ground entries that weren’t accepted, or that name another pair', async () => {
+    const forged = { debateId: 'd1', claimId: 'c', side: 'against', text: 'Buses should be free.', version: 1, by: 'ben', at: serverTimestamp() }
+    await assertFails(setDoc(doc(db('ben'), `pairs/${pair}/ground/d1__c`), forged))
+    await answerClaim(db('ben'), ben, 'd1', await claim(), 'against', 'accepted')
+    await assertFails(setDoc(doc(db('ben'), `pairs/${pair}/ground/d1__c`), { ...forged, text: 'Something else' }))
+    await assertFails(setDoc(doc(db('ben'), 'pairs/ben_rita/ground/d1__c'), forged))
+    await assertSucceeds(setDoc(doc(db('ben'), `pairs/${pair}/ground/d1__c`), forged))
+  })
+
+  it('adds agreed terms and wording to the glossary', async () => {
+    const termId = await openTerm(db('ben'), ben, 'd1', 'against', 'c', 'free', 'No fare to ride')
+    const def = (await getDocs(collection(db('ana'), 'debates/d1/definitions'))).docs.map((d) => ({ ...d.data(), id: d.id }) as unknown as import('../src/model/types').Definition)[0]
+    await assertFails(setDoc(doc(db('ana'), `pairs/${pair}/glossary/d1__${termId}`), {
+      debateId: 'd1', kind: 'term', claimId: 'c', termId, defId: def.id, rewordingId: null, phrase: 'free', meaning: 'No fare to ride', replacement: null, by: 'ana',
+    }))
+    await assertSucceeds(acceptDefinition(db('ana'), ana, 'd1', def, { pair, phrase: 'free', meaning: 'No fare to ride' }))
+    expect((await getDoc(doc(db('ben'), `pairs/${pair}/glossary/d1__${termId}`))).data()?.meaning).toBe('No fare to ride')
+
+    const id = await challengeWording(db('ben'), ben, 'd1', 'against', await claim(), { phrase: 'free', suggestion: 'fare-free', reason: '' })
+    const r = { ...(await getDoc(doc(db('ana'), `debates/d1/rewordings/${id}`))).data(), id } as unknown as import('../src/model/types').Rewording
+    await assertSucceeds(acceptRewording(db('ana'), ana, 'd1', await claim(), r, pair))
+    expect((await getDoc(doc(db('ben'), `pairs/${pair}/glossary/d1__${id}`))).data()?.replacement).toBe('fare-free')
+  })
+})

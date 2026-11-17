@@ -286,7 +286,7 @@ export function MapCheckPanel({ map, onSelect }: { map: DebateMap; onSelect: (s:
         </CheckGroup>
       )}
       {check.missingStances.map((m) => (
-        <CheckGroup key={m.side} title={`${map.debate.sides[m.side].label} hasn’t taken a stance (${m.claimIds.length})`}>
+        <CheckGroup key={m.side} title={`${map.debate.sides[m.side].label} ${map.debate.origin === 'native' ? 'hasn’t answered' : 'hasn’t taken a stance'} (${m.claimIds.length})`}>
           {m.claimIds.map((id) => (
             <Item key={id} id={id} />
           ))}

@@ -15,12 +15,23 @@ describe('checkMap', () => {
     expect(checkMap(map).unsourced).not.toContain('p1')
   })
 
+  it('finds the other side’s boxes a side hasn’t answered on a native debate', () => {
+    const forBoxes = sampleMap.claims.filter((c) => c.placed && c.side === 'for').map((c) => c.id)
+    const check = checkMap({ ...sampleMap, acceptances: [] })
+    const against = check.missingStances.find((m) => m.side === 'against')
+    expect(against?.claimIds.length).toBeGreaterThan(0)
+    expect(against?.claimIds.every((id) => forBoxes.includes(id))).toBe(true)
+    const answered = checkMap({ ...sampleMap, acceptances: (against?.claimIds ?? []).map((id) => ({ claimId: id, side: 'against' as const, version: 1, value: 'accepted' as const, by: 'b' })) })
+    expect(answered.missingStances.find((m) => m.side === 'against')).toBeUndefined()
+  })
+
   it('finds boxes a side has no stance on, skipping sides without a leader', () => {
-    const bare: DebateMap = { ...sampleMap, stances: [] }
+    const bare: DebateMap = { ...sampleMap, stances: [], debate: { ...sampleMap.debate, origin: 'imported' } }
     expect(checkMap(bare).missingStances.map((m) => m.side)).toEqual(['for', 'against'])
     expect(checkMap(bare).missingStances[0].claimIds).toContain('c')
     expect(checkMap(bare).missingStances[0].claimIds).not.toContain('n1') // unplaced
-    const noLeader: DebateMap = { ...bare, debate: { ...bare.debate, sides: { ...bare.debate.sides, against: { label: 'Against', leaderUid: null, memberUids: [] } } } }
+    const native: DebateMap = { ...bare, debate: { ...bare.debate, origin: 'native' } }
+    const noLeader: DebateMap = { ...native, stances: native.claims.map((c) => ({ targetId: c.id, side: 'for' as const, value: 'agree' as const, confidence: 50 })), debate: { ...native.debate, sides: { ...native.debate.sides, against: { label: 'Against', leaderUid: null, memberUids: [] } } } }
     expect(checkMap(noLeader).missingStances.map((m) => m.side)).toEqual(['for'])
   })
 

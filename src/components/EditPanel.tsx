@@ -1,10 +1,12 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { User } from 'firebase/auth'
 import { db } from '../firebase'
 import { addArgument, addNote, placeNote, setStance, type PremiseInput } from '../data/map'
 import { editClaim } from '../data/agreement'
-import { AgreementSection } from './AgreementPanel'
+import { AgreementSection, GroundedNote } from './AgreementPanel'
 import { ClaimBuilder, type Suggestion } from './ClaimBuilder'
+import type { CommonGround } from '../data/ground'
+import { containsPhrase, replacePhrase, wordingSlips } from '../model/agreement'
 import { claimAgreement } from '../model/agreement'
 import { stanceOf } from '../model/crux'
 import type { Claim, ClaimSource, ClaimType, DebateMap, Link, SideId, Stance, StanceValue } from '../model/types'
@@ -52,6 +54,7 @@ export function EditPanel({
   onSelect,
   source,
   tree,
+  common,
 }: {
   map: DebateMap
   selection: Selection
@@ -60,6 +63,8 @@ export function EditPanel({
   onSelect: (s: Selection) => void
   source?: SourceProps
   tree?: TreeProps
+  /** What the two people agreed across their debates (only for the two of them). */
+  common?: CommonGround | null
 }) {
   const claim = selection?.kind === 'claim' ? map.claims.find((c) => c.id === selection.id) : undefined
   const link = selection?.kind === 'link' ? map.links.find((l) => l.id === selection.id) : undefined
@@ -71,12 +76,12 @@ export function EditPanel({
       )}
       {!claim && !link && !source?.draft && (
         <p className="small muted">
-          Select a box to add reasons or objections to it{role.leader ? ', or to set your team’s stance' : ''}. Select a
+          Select a box to add reasons or objections to it{map.debate.origin === 'native' ? ', answer it, or define its terms' : role.leader ? ', or to set your team’s stance' : ''}. Select a
           group’s outline to check whether its premises lead where they point.
         </p>
       )}
       {!claim && !link && <MapCheckPanel map={map} onSelect={onSelect} />}
-      {claim && <ClaimPanel key={`${claim.id}-${role.side}`} map={map} claim={claim} user={user} role={role} onSelect={onSelect} source={source} tree={tree} />}
+      {claim && <ClaimPanel key={`${claim.id}-${role.side}`} map={map} claim={claim} user={user} role={role} onSelect={onSelect} source={source} tree={tree} common={common} />}
       {link && <LinkPanel key={link.id} map={map} link={link} role={role} user={user} />}
       {role.side && <NoteComposer key={role.side} debateId={map.debate.id} user={user} side={role.side} source={source} />}
     </div>
@@ -133,6 +138,7 @@ function ClaimPanel({
   onSelect,
   source,
   tree,
+  common,
 }: {
   map: DebateMap
   claim: Claim
@@ -141,6 +147,7 @@ function ClaimPanel({
   onSelect: (s: Selection) => void
   source?: SourceProps
   tree?: TreeProps
+  common?: CommonGround | null
 }) {
   // In a sub-debate the conclusion is the parent's box: its sources and discussion stay there.
   const borrowed = claim.id === map.debate.conclusion.claimId && map.debate.conclusion.debateId !== map.debate.id
@@ -153,7 +160,7 @@ function ClaimPanel({
     <section className="stack-sm">
       <span className="eyebrow">{isConclusion ? 'Conclusion' : 'Selected box'}</span>
       {editing ? (
-        <EditClaimForm map={map} claim={claim} user={user} onDone={() => setEditing(false)} />
+        <EditClaimForm map={map} claim={claim} user={user} pair={common?.pair} onDone={() => setEditing(false)} />
       ) : (
         <>
           <p className="selected-text">{claim.text}</p>
@@ -171,7 +178,8 @@ function ClaimPanel({
         </>
       )}
       {claim.source && <SourceQuote src={claim.source} onSeek={source?.onSeek} />}
-      {map.debate.origin === 'native' && !borrowed && <AgreementSection map={map} claim={claim} user={user} role={role} subs={tree?.subs} onSelect={onSelect} />}
+      {map.debate.origin === 'native' && !borrowed && claim.groundRef && <GroundedNote map={map} claim={claim} />}
+      {map.debate.origin === 'native' && !borrowed && !claim.groundRef && <AgreementSection map={map} claim={claim} user={user} role={role} subs={tree?.subs} onSelect={onSelect} pair={common?.pair} />}
       {map.debate.origin === 'native' && borrowed && (
         <p className="small muted">
           Accept it, define its terms or challenge its wording in the{' '}
@@ -220,6 +228,7 @@ function ClaimPanel({
           onSeek={source?.onSeek}
           settled={tree?.settled}
           suggestion={suggestion}
+          common={common}
           onAdded={() => {
             source?.onDraftUsed()
             onSelect({ kind: 'claim', id: claim.id })
@@ -250,7 +259,7 @@ function ClaimPanel({
   )
 }
 
-function EditClaimForm({ map, claim, user, onDone }: { map: DebateMap; claim: Claim; user: User; onDone: () => void }) {
+function EditClaimForm({ map, claim, user, pair, onDone }: { map: DebateMap; claim: Claim; user: User; pair?: string; onDone: () => void }) {
   const accepted = map.debate.origin === 'native' && claimAgreement(map, claim).acceptance?.value === 'accepted'
   const [text, setText] = useState(claim.text)
   const [type, setType] = useState<ClaimType>(claim.type)
@@ -258,7 +267,7 @@ function EditClaimForm({ map, claim, user, onDone }: { map: DebateMap; claim: Cl
   async function save(e: FormEvent) {
     e.preventDefault()
     try {
-      await editClaim(db, user, map.debate.id, claim.id, text, type)
+      await editClaim(db, user, map.debate.id, claim.id, text, type, pair)
       onDone()
     } catch (err) {
       console.error(err)
@@ -385,6 +394,7 @@ function ArgumentComposer({
   onSeek,
   settled,
   suggestion,
+  common,
   onAdded,
 }: {
   map: DebateMap
@@ -396,6 +406,7 @@ function ArgumentComposer({
   settled?: SettledClaim[]
   /** A statement from the claim builder to start from. */
   suggestion?: Suggestion | null
+  common?: CommonGround | null
   onAdded: () => void
 }) {
   const citable = (settled ?? []).filter((c) => c.outcome === 'accepted' && c.claimId !== target.id)
@@ -425,6 +436,13 @@ function ArgumentComposer({
       return ps.length < 8 ? [...ps, entry] : ps
     })
   }, [draft])
+  // Common ground: claims to reuse, agreed terms to insert, and agreed wording to keep to.
+  const terms = (common?.glossary ?? []).filter((g) => g.kind === 'term')
+  const wording = (common?.glossary ?? []).filter((g) => g.kind === 'wording' && g.replacement)
+  const reusable = (common?.ground ?? []).filter(
+    (g) => !(g.debateId === map.debate.id && g.claimId === target.id) && !premises.some((p) => p.groundRef?.claimId === g.claimId && p.groundRef.debateId === g.debateId),
+  )
+  const caret = useRef<{ i: number; at: number | null }>({ i: 0, at: null })
   // A statement picked in the claim builder fills the first premise.
   const [lastSuggestion, setLastSuggestion] = useState(suggestion?.n ?? 0)
   if (suggestion && suggestion.n !== lastSuggestion) {
@@ -496,10 +514,29 @@ function ArgumentComposer({
             placeholder={i === 0 ? 'State one claim…' : 'And this must also hold…'}
             value={p.text}
             onChange={(e) => update(i, { text: e.target.value })}
-            readOnly={!!p.settledRef}
+            onSelect={(e) => (caret.current = { i, at: e.currentTarget.selectionStart })}
+            readOnly={!!p.settledRef || !!p.groundRef}
             aria-label={`Premise ${i + 1}`}
           />
           {p.settledRef && <span className="small ok">✓ Settled claim, cited as is.</span>}
+          {p.groundRef && <span className="small ok">✓ You both agreed this already. It’s reused as is, and stays linked to where you agreed it.</span>}
+          {!p.groundRef &&
+            wordingSlips(p.text, wording).map((w) => (
+              <span key={w.id} className="hint slip">
+                You agreed to say “{w.replacement}” instead of “{w.phrase}”.
+                <button className="btn small-btn" type="button" onClick={() => update(i, { text: replacePhrase(p.text, w.phrase, w.replacement ?? '') })}>
+                  Use “{w.replacement}”
+                </button>
+              </span>
+            ))}
+          {!p.groundRef &&
+            terms
+              .filter((t) => containsPhrase(p.text, t.phrase))
+              .map((t) => (
+                <span key={t.id} className="small muted">
+                  “{t.phrase}” has an agreed meaning: {t.meaning}
+                </span>
+              ))}
           {p.source && (
             <span className="small muted">
               From {p.source.speaker ?? 'the transcript'}
@@ -528,6 +565,63 @@ function ArgumentComposer({
         <button className="linklike small" type="button" onClick={() => setPremises((ps) => [...ps, { text: '', type: 'unspecified' }])}>
           + Add a co-premise (all must hold together)
         </button>
+      )}
+      {terms.length + wording.length > 0 && (
+        <select
+          className="input"
+          value=""
+          aria-label="Insert an agreed term"
+          onChange={(e) => {
+            const phrase = e.target.value
+            if (!phrase) return
+            const { i, at } = caret.current
+            setPremises((ps) =>
+              ps.map((p, j) => {
+                if (j !== Math.min(i, ps.length - 1) || p.groundRef || p.settledRef) return p
+                const pos = Math.min(at ?? p.text.length, p.text.length)
+                const before = p.text.slice(0, pos)
+                const after = p.text.slice(pos)
+                const pad = (x: string, left: boolean) => (x && !(left ? /\s$/ : /^\s/).test(x) ? ' ' : '')
+                return { ...p, text: `${before}${pad(before, true)}${phrase}${pad(after, false)}${after}` }
+              }),
+            )
+          }}
+        >
+          <option value="">Insert an agreed term…</option>
+          {terms.map((t) => (
+            <option key={t.id} value={t.phrase} title={t.meaning ?? ''}>
+              {t.phrase}: {(t.meaning ?? '').slice(0, 60)}
+            </option>
+          ))}
+          {wording.map((w) => (
+            <option key={w.id} value={w.replacement ?? ''}>
+              {w.replacement} (agreed in place of “{w.phrase}”)
+            </option>
+          ))}
+        </select>
+      )}
+      {reusable.length > 0 && premises.length < 8 && (
+        <select
+          className="input"
+          value=""
+          aria-label="Reuse an agreed claim"
+          onChange={(e) => {
+            const g = reusable.find((x) => x.id === e.target.value)
+            if (!g) return
+            const entry: PremiseInput = { text: g.text, type: 'unspecified', groundRef: { debateId: g.debateId, claimId: g.claimId, version: g.version } }
+            setPremises((ps) => {
+              const empty = ps.findIndex((p) => !p.text.trim())
+              return empty >= 0 ? ps.map((p, i) => (i === empty ? entry : p)) : [...ps, entry]
+            })
+          }}
+        >
+          <option value="">Reuse a claim you both agreed…</option>
+          {reusable.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.text.length > 90 ? `${g.text.slice(0, 90)}…` : g.text}
+            </option>
+          ))}
+        </select>
       )}
       {citable.length > 0 && premises.length < 8 && (
         <select

@@ -337,3 +337,8 @@ input.input[type="search"] { padding: 9px 11px; font-size: 15px; }
 .claim-builder summary { cursor: pointer; list-style-position: inside; }
 .claim-builder[open] summary { margin-bottom: 10px; }
 .variant-text { margin: 0; font-family: var(--display); font-size: 15px; }
+.common-ground { border: 1px solid color-mix(in srgb, var(--agree) 40%, var(--line)); border-radius: 10px; padding: 12px; background: var(--surface); }
+.glossary { margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.glossary dt { font-weight: 700; }
+.glossary dd { margin: 0; color: var(--muted); }
+.slip { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

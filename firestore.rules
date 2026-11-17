@@ -387,6 +387,58 @@ service cloud.firestore {
       }
     }
 
+    // ---- Common ground between two people ----------------------------------
+    // pairs/{a_b}: what the two leaders a and b (uids, sorted) have agreed across all
+    // their debates. Only they read it. Entries are written alongside the answer that
+    // agrees them, and checked against it; either of them can take one down.
+    function inPairKey(pairKey) { return signedIn() && uid() in pairKey.split('_'); }
+    function pairOfDebate(pairKey, debateId) {
+      let t = team(debateId);
+      return pairKey == t.sides['for'].leaderUid + '_' + t.sides.against.leaderUid
+        || pairKey == t.sides.against.leaderUid + '_' + t.sides['for'].leaderUid;
+    }
+
+    match /pairs/{pairKey}/ground/{entryId} {
+      allow read, delete: if inPairKey(pairKey);
+      allow create, update: if inPairKey(pairKey) && validGround(pairKey, entryId, request.resource.data);
+
+      function validGround(pairKey, entryId, g) {
+        let a = getAfter(/databases/$(database)/documents/debates/$(g.debateId)/acceptances/$(g.claimId + '__' + g.side)).data;
+        let c = claimDoc(g.debateId, g.claimId);
+        return g.keys().hasOnly(['debateId', 'claimId', 'side', 'text', 'version', 'by', 'at'])
+          && g.by == uid()
+          && entryId == g.debateId + '__' + g.claimId
+          && pairOfDebate(pairKey, g.debateId)
+          && a.value == 'accepted' && a.version == g.version
+          && c.get('version', 1) == g.version && c.text == g.text;
+      }
+    }
+
+    match /pairs/{pairKey}/glossary/{entryId} {
+      allow read, delete: if inPairKey(pairKey);
+      allow create, update: if inPairKey(pairKey) && validGlossary(pairKey, entryId, request.resource.data);
+
+      function validGlossary(pairKey, entryId, e) {
+        return e.keys().hasOnly(['debateId', 'kind', 'claimId', 'termId', 'defId', 'rewordingId', 'phrase', 'meaning', 'replacement', 'by', 'at'])
+          && e.by == uid()
+          && pairOfDebate(pairKey, e.debateId)
+          && shortText(e.phrase, 300)
+          && ((e.kind == 'term' && validTermEntry(entryId, e)) || (e.kind == 'wording' && validWordingEntry(entryId, e)));
+      }
+      function validTermEntry(entryId, e) {
+        let d = getAfter(defPath(e.debateId, e.defId)).data;
+        return entryId == e.debateId + '__' + e.termId
+          && d.status == 'accepted' && d.termId == e.termId && d.claimId == e.claimId
+          && shortText(e.meaning, 4000) && e.replacement == null && e.rewordingId == null;
+      }
+      function validWordingEntry(entryId, e) {
+        let r = getAfter(/databases/$(database)/documents/debates/$(e.debateId)/rewordings/$(e.rewordingId)).data;
+        return entryId == e.debateId + '__' + e.rewordingId
+          && r.status == 'accepted' && r.phrase == e.phrase && r.suggestion == e.replacement && r.claimId == e.claimId
+          && e.meaning == null && e.termId == null && e.defId == null;
+      }
+    }
+
     // ---- Honest-debate tools (milestone 3) --------------------------------
     match /debates/{debateId}/evidence/{evidenceId} {
       allow read: if canRead(team(debateId));

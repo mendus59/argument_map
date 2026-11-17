@@ -9,7 +9,7 @@ Parrhesia: lay out debates as shared argument maps and debate more constructivel
 - Two people or teams build a shared map of premises, reasons, objections and conclusions, and record where each side stands on every box.
 - Your opponent accepts or disputes each claim, asks for terms to be defined, and can challenge loaded wording.
 - Definitions go back and forth until agreed, with counter-definitions or addenda, so the real disagreement shows.
-- Change an agreed claim and every conclusion resting on it is flagged as in question until it's settled again.
+- Agreed claims, terms and wording carry over to all your debates with the same person, and a change to one flags every conclusion resting on it.
 - A claim builder spells out a claim's opposite, converse and contrapositive in plain words, with tips for debating it.
 - Fork a pivotal premise into its own sub-debate, and restate before you rebut.
 <!-- site-summary:end -->
