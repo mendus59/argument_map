@@ -4,6 +4,7 @@ import { db } from '../firebase'
 import { addArgument, addNote, placeNote, setStance, type PremiseInput } from '../data/map'
 import { editClaim } from '../data/agreement'
 import { AgreementSection } from './AgreementPanel'
+import { ClaimBuilder, type Suggestion } from './ClaimBuilder'
 import { claimAgreement } from '../model/agreement'
 import { stanceOf } from '../model/crux'
 import type { Claim, ClaimSource, ClaimType, DebateMap, Link, SideId, Stance, StanceValue } from '../model/types'
@@ -144,6 +145,7 @@ function ClaimPanel({
   // In a sub-debate the conclusion is the parent's box: its sources and discussion stay there.
   const borrowed = claim.id === map.debate.conclusion.claimId && map.debate.conclusion.debateId !== map.debate.id
   const [editing, setEditing] = useState(false)
+  const [suggestion, setSuggestion] = useState<Suggestion | null>(null)
   const isConclusion = claim.id === map.debate.conclusion.claimId
   const notes = map.claims.filter((c) => !c.placed)
 
@@ -193,6 +195,12 @@ function ClaimPanel({
           ✓ Settled in a sub-debate. <RouterLink to={`/d/${claim.settledRef.debateId}`}>See where</RouterLink>
         </p>
       )}
+      {map.debate.origin === 'native' && (
+        <ClaimBuilder text={claim.text} canUse={!!role.side} onUse={(s) => {
+            setSuggestion({ ...s, n: (suggestion?.n ?? 0) + 1 })
+            setTimeout(() => document.querySelector('.composer textarea')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0)
+          }} />
+      )}
       <ForkSection map={map} claim={claim} user={user} side={role.side} sub={tree?.subs.get(claim.id)} />
       {borrowed ? (
         <p className="small muted">
@@ -211,6 +219,7 @@ function ClaimPanel({
           draft={source?.draft ?? null}
           onSeek={source?.onSeek}
           settled={tree?.settled}
+          suggestion={suggestion}
           onAdded={() => {
             source?.onDraftUsed()
             onSelect({ kind: 'claim', id: claim.id })
@@ -375,6 +384,7 @@ function ArgumentComposer({
   draft,
   onSeek,
   settled,
+  suggestion,
   onAdded,
 }: {
   map: DebateMap
@@ -384,6 +394,8 @@ function ArgumentComposer({
   draft?: ClaimSource | null
   onSeek?: (s: number) => void
   settled?: SettledClaim[]
+  /** A statement from the claim builder to start from. */
+  suggestion?: Suggestion | null
   onAdded: () => void
 }) {
   const citable = (settled ?? []).filter((c) => c.outcome === 'accepted' && c.claimId !== target.id)
@@ -413,6 +425,13 @@ function ArgumentComposer({
       return ps.length < 8 ? [...ps, entry] : ps
     })
   }, [draft])
+  // A statement picked in the claim builder fills the first premise.
+  const [lastSuggestion, setLastSuggestion] = useState(suggestion?.n ?? 0)
+  if (suggestion && suggestion.n !== lastSuggestion) {
+    setLastSuggestion(suggestion.n)
+    setKind(suggestion.kind)
+    setPremises((ps) => [{ text: suggestion.text, type: 'unspecified' }, ...ps.slice(1)])
+  }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

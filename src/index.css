@@ -333,3 +333,7 @@ input.input[type="search"] { padding: 9px 11px; font-size: 15px; }
 .claim-node.in-question { border-style: dashed; }
 .ripple-note .history-list { list-style: none; padding-left: 0; }
 .ripple-note .linklike { text-align: left; display: inline; }
+.claim-builder { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--surface); }
+.claim-builder summary { cursor: pointer; list-style-position: inside; }
+.claim-builder[open] summary { margin-bottom: 10px; }
+.variant-text { margin: 0; font-family: var(--display); font-size: 15px; }
