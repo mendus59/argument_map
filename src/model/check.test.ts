@@ -30,7 +30,7 @@ describe('checkMap', () => {
     expect(checkMap(bare).missingStances.map((m) => m.side)).toEqual(['for', 'against'])
     expect(checkMap(bare).missingStances[0].claimIds).toContain('c')
     expect(checkMap(bare).missingStances[0].claimIds).not.toContain('n1') // unplaced
-    const native: DebateMap = { ...bare, debate: { ...bare.debate, origin: 'native' } }
+    const native: DebateMap = { ...bare, acceptances: [], debate: { ...bare.debate, origin: 'native' } }
     const noLeader: DebateMap = { ...native, stances: native.claims.map((c) => ({ targetId: c.id, side: 'for' as const, value: 'agree' as const, confidence: 50 })), debate: { ...native.debate, sides: { ...native.debate.sides, against: { label: 'Against', leaderUid: null, memberUids: [] } } } }
     expect(checkMap(noLeader).missingStances.map((m) => m.side)).toEqual(['for'])
   })

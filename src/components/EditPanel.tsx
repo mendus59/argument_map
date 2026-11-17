@@ -76,8 +76,14 @@ export function EditPanel({
       )}
       {!claim && !link && !source?.draft && (
         <p className="small muted">
-          Select a box to add reasons or objections to it{map.debate.origin === 'native' ? ', answer it, or define its terms' : role.leader ? ', or to set your team’s stance' : ''}. Select a
-          group’s outline to check whether its premises lead where they point.
+          {map.debate.origin === 'native' ? (
+            'Open a claim in the conversation, or pick a box on the tree, to answer it, define its terms, or add a reason or objection.'
+          ) : (
+            <>
+              Select a box to add reasons or objections to it{role.leader ? ', or to set your team’s stance' : ''}. Select a group’s outline to check whether its
+              premises lead where they point.
+            </>
+          )}
         </p>
       )}
       {!claim && !link && <MapCheckPanel map={map} onSelect={onSelect} />}
@@ -130,7 +136,8 @@ function SourceQuote({ src, onSeek }: { src: ClaimSource; onSeek?: (s: number) =
   )
 }
 
-function ClaimPanel({
+/** Everything about one claim: its answer, terms, wording, the claim builder, sources, discussion and the composer. */
+export function ClaimPanel({
   map,
   claim,
   user,
@@ -139,6 +146,7 @@ function ClaimPanel({
   source,
   tree,
   common,
+  inCard,
 }: {
   map: DebateMap
   claim: Claim
@@ -148,6 +156,8 @@ function ClaimPanel({
   source?: SourceProps
   tree?: TreeProps
   common?: CommonGround | null
+  /** Shown inside a conversation card, which already shows the claim's wording. */
+  inCard?: boolean
 }) {
   // In a sub-debate the conclusion is the parent's box: its sources and discussion stay there.
   const borrowed = claim.id === map.debate.conclusion.claimId && map.debate.conclusion.debateId !== map.debate.id
@@ -158,12 +168,12 @@ function ClaimPanel({
 
   return (
     <section className="stack-sm">
-      <span className="eyebrow">{isConclusion ? 'Conclusion' : 'Selected box'}</span>
+      {!inCard && <span className="eyebrow">{isConclusion ? 'Conclusion' : 'Selected box'}</span>}
       {editing ? (
         <EditClaimForm map={map} claim={claim} user={user} pair={common?.pair} onDone={() => setEditing(false)} />
       ) : (
         <>
-          <p className="selected-text">{claim.text}</p>
+          {!inCard && <p className="selected-text">{claim.text}</p>}
           <p className="small muted">
             {TYPES.find((t) => t.value === claim.type)?.label} · posted by {authorName(map, claim.authorUid)} ({map.debate.sides[claim.side].label})
             {claim.authorUid === user.uid && (
@@ -650,13 +660,13 @@ function ArgumentComposer({
       {!looksDouble && unsourced && <p className="hint">Facts and predictions are stronger with a source. You can post as is.</p>}
       {error && <small className="error">{error}</small>}
       <button className="btn pri small-btn" type="submit" disabled={busy || !filled.length || (mustRestate && !restatement.trim())}>
-        {busy ? 'Adding…' : 'Add to map'}
+        {busy ? 'Adding…' : map.debate.origin === 'native' ? 'Post' : 'Add to map'}
       </button>
     </form>
   )
 }
 
-function LinkPanel({ map, link, role, user }: { map: DebateMap; link: Link; role: Role; user: User }) {
+export function LinkPanel({ map, link, role, user }: { map: DebateMap; link: Link; role: Role; user: User }) {
   const target = map.claims.find((c) => c.id === link.targetClaimId)
   const premises = link.premiseClaimIds.map((id) => map.claims.find((c) => c.id === id)).filter(Boolean) as Claim[]
   return (
@@ -678,7 +688,7 @@ function LinkPanel({ map, link, role, user }: { map: DebateMap; link: Link; role
   )
 }
 
-function NoteComposer({ debateId, user, side, source }: { debateId: string; user: User; side: SideId; source?: SourceProps }) {
+export function NoteComposer({ debateId, user, side, source }: { debateId: string; user: User; side: SideId; source?: SourceProps }) {
   const draft = source?.draft ?? null
   const [text, setText] = useState(draft?.quote ?? '')
   const [lastQuote, setLastQuote] = useState(draft?.quote ?? null)
