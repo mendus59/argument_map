@@ -165,6 +165,14 @@ export function ClaimPanel({
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null)
   const isConclusion = claim.id === map.debate.conclusion.claimId
   const notes = map.claims.filter((c) => !c.placed)
+  const agreement = map.debate.origin === 'native' ? claimAgreement(map, claim) : null
+  const contested = agreement?.terms.find((t) => t.contested && t.state !== 'agreed')
+  const contention =
+    agreement?.status === 'disputed'
+      ? `${map.debate.sides[agreement.opponent].label} disputes this.`
+      : contested
+        ? `You each reject the other’s meaning of “${contested.term.phrase}”.`
+        : null
 
   return (
     <section className="stack-sm">
@@ -219,7 +227,7 @@ export function ClaimPanel({
             setTimeout(() => document.querySelector('.composer textarea')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0)
           }} />
       )}
-      <ForkSection map={map} claim={claim} user={user} side={role.side} sub={tree?.subs.get(claim.id)} />
+      <ForkSection map={map} claim={claim} user={user} side={role.side} sub={tree?.subs.get(claim.id)} contention={contention} />
       {borrowed ? (
         <p className="small muted">
           This is the box being argued. Its sources and discussion are in the{' '}

@@ -6,6 +6,7 @@ import { ArgumentMap, type Selection } from '../map/ArgumentMap'
 import type { SubStatus } from '../map/nodes'
 import { claimAgreement } from '../model/agreement'
 import { ripple } from '../model/ripple'
+import { standing } from '../model/summary'
 import type { Claim, DebateMap, SideId } from '../model/types'
 import { StatusPill } from './AgreementPanel'
 import { ClaimPanel, LinkPanel, type TreeProps } from './EditPanel'
@@ -104,6 +105,7 @@ export function ConversationView({
       <main className="workspace conversation-layout">
         <section className="conversation" aria-label="Conversation">
           <HowItWorks />
+          <StandingPanel map={map} onOpen={(id) => onSelect({ kind: 'claim', id })} />
           {cards.map((c) => {
             const a = claimAgreement(map, c)
             const iq = shaken.get(c.id)
@@ -138,7 +140,7 @@ export function ConversationView({
                     {iq && <span className={`status-pill ${iq.waiting ? 'status-unsettled' : 'status-disputed'}`}>{iq.waiting ? '⏸ On hold' : '⚠ In question'}</span>}
                     {a.openTerms.length > 0 && <span className="count">{a.openTerms.length} term{a.openTerms.length > 1 ? 's' : ''} to define</span>}
                     {a.openRewordings.length > 0 && <span className="count">wording challenged</span>}
-                    {c.subDebateId && c.id !== conclusionId && <span className="badge fork">⑂ Sub-debate</span>}
+                    {c.subDebateId && c.id !== conclusionId && <SubChip sub={subs?.get(c.id)} />}
                     {typing.length > 0 && <span className="writing">✎ {typing.join(', ')} writing…</span>}
                   </span>
                 </button>
@@ -199,5 +201,56 @@ function HowItWorks() {
         <li>If something agreed changes, everything that rests on it is flagged as in question until it’s settled again.</li>
       </ol>
     </details>
+  )
+}
+
+function SubChip({ sub }: { sub?: SubStatus }) {
+  if (!sub || sub.status === 'open') return <span className="badge fork">⑂ Being argued in a sub-debate</span>
+  const label = sub.outcome === 'accepted' ? '✓ Accepted in its sub-debate' : sub.outcome === 'rejected' ? '✗ Rejected in its sub-debate' : '⇄ Agreed to disagree'
+  return <span className={`badge outcome-${sub.outcome}`}>{label}</span>
+}
+
+/** How much is agreed so far, and the few disputed points the rest of the argument hangs on. */
+function StandingPanel({ map, onOpen }: { map: DebateMap; onOpen: (claimId: string) => void }) {
+  const s = useMemo(() => standing(map), [map])
+  if (s.total <= 1) return null
+  const pct = Math.round((s.agreed / s.total) * 100)
+  const text = (id: string) => map.claims.find((c) => c.id === id)?.text ?? ''
+  return (
+    <section className="standing" aria-label="Where you stand">
+      <div className="row-sm">
+        <strong className="small">Where you stand</strong>
+        <span className="small muted">
+          {s.agreed} of {s.total} claims agreed · {s.disputed} disputed{s.agreedTerms ? ` · ${s.agreedTerms} term${s.agreedTerms > 1 ? 's' : ''} agreed` : ''}
+        </span>
+      </div>
+      <div className="meter" role="img" aria-label={`${pct}% of claims agreed`}>
+        <span className="meter-agreed" style={{ width: `${pct}%` }} />
+        <span className="meter-disputed" style={{ width: `${Math.round((s.disputed / s.total) * 100)}%` }} />
+      </div>
+      {s.cores.length > 0 ? (
+        <div className="stack-xs">
+          <span className="small">
+            <strong>Your core disagreement{s.cores.length > 1 ? 's' : ''}</strong> <span className="muted">— the points the rest of the argument hangs on</span>
+          </span>
+          <ul className="history-list">
+            {s.cores.slice(0, 3).map((c) => (
+              <li key={`${c.claimId}-${c.phrase ?? ''}`} className="small">
+                <button className="linklike" type="button" onClick={() => onOpen(c.claimId)}>
+                  {c.kind === 'term' ? `What “${c.phrase}” means` : `“${short(text(c.claimId), 80)}”`}
+                </button>{' '}
+                <span className="muted">
+                  {c.kind === 'term' ? `in “${short(text(c.claimId), 40)}”` : 'is disputed'}
+                  {c.restingOn > 0 ? `; ${c.restingOn} claim${c.restingOn > 1 ? 's' : ''} rest${c.restingOn > 1 ? '' : 's'} on it` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <span className="small muted">Settle one, or spin it off into its own debate so the rest can move on.</span>
+        </div>
+      ) : (
+        <span className="small muted">No core disagreement pinned down yet. When you find the premise you really disagree on, dispute it, and it shows up here.</span>
+      )}
+    </section>
   )
 }
