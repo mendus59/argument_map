@@ -71,7 +71,7 @@ debates/{id}/claimVersions/{claimId}__{n}   claimId, version, text, type, by, at
 claims/{claimId}.version                    starts at 1 (missing means 1)
 ```
 
-Redesign milestones: (1) answers, terms, wording and versions (done); (2) ripple: conclusions that depend on an unsettled claim show as in question; (3) common ground and a glossary shared between the same two people across debates, with a term picker; (4) a conversation-first layout with the tree beside it (chosen by Patrick, 2026-11-17); (5) spinning disputes off into sub-debates and a core-disagreement summary.
+Redesign milestones: (1) answers, terms, wording and versions (done); (2) ripple (done): when a premise that was accepted changes, is disputed, or has a term or wording reopened, every conclusion resting on it through reasons (at any depth) shows as **in question**, naming the premises at fault. Worked out in the browser from the tree, so it clears by itself once they are settled. A premise being argued in an open sub-debate puts its conclusions **on hold** instead, and an accepted sub-debate outcome settles it. Premises never accepted, and objections, do not ripple; (3) common ground and a glossary shared between the same two people across debates, with a term picker; (4) a conversation-first layout with the tree beside it (chosen by Patrick, 2026-11-17); (5) spinning disputes off into sub-debates and a core-disagreement summary.
 
 ## Honest-debate features in v1
 

@@ -3,6 +3,7 @@ import { Background, Controls, MarkerType, Panel, ReactFlow, ReactFlowProvider, 
 import '@xyflow/react/dist/style.css'
 import type { DebateMap } from '../model/types'
 import { claimAgreement } from '../model/agreement'
+import { ripple } from '../model/ripple'
 import { findCruxes, stanceOf } from '../model/crux'
 import { layoutMap, CLAIM_W } from './layout'
 import { ClaimNode, GroupNode, type ClaimNodeType, type GroupNodeType, type SubStatus } from './nodes'
@@ -52,6 +53,7 @@ function MapCanvas({ map, selection, onSelect, highlight, writers, subs }: Props
     const imported = map.debate.origin === 'imported'
     // Native debates show how far each box is agreed; imported ones keep the stance chips.
     const native = map.debate.origin === 'native'
+    const shaken = native ? ripple(map, subs) : new Map()
     const byOf = (c: (typeof map.claims)[number]) => c.source?.speaker ?? (imported ? null : (map.debate.people[c.authorUid]?.name ?? null))
     const objectionPremises = new Set(map.links.filter((l) => l.kind === 'objection').flatMap((l) => l.premiseClaimIds))
     const groups: GroupNodeType[] = layout.groups.map((g) => ({
@@ -88,6 +90,7 @@ function MapCanvas({ map, selection, onSelect, highlight, writers, subs }: Props
         sides,
         by: byOf(p.claim),
         agreement: native ? claimAgreement(map, p.claim).status : undefined,
+        inQuestion: shaken.get(p.claim.id),
       },
       style: { width: CLAIM_W },
       draggable: false,

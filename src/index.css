@@ -327,3 +327,9 @@ input.input[type="search"] { padding: 9px 11px; font-size: 15px; }
 .term-card p { margin: 0; }
 .history-list { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
 .btn.on { background: var(--ink); color: var(--surface); }
+.ripple-note { border-left: 3px solid var(--dis); background: var(--dis-soft); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+.ripple-note.waiting { border-left-color: var(--unsure); background: var(--unsure-soft); }
+.ripple-note p { margin: 0; }
+.claim-node.in-question { border-style: dashed; }
+.ripple-note .history-list { list-style: none; padding-left: 0; }
+.ripple-note .linklike { text-align: left; display: inline; }
