@@ -108,6 +108,8 @@ export interface Claim {
   position?: { x: number; y: number }
   subDebateId?: string
   settledRef?: ClaimRef
+  /** Reuses a claim the same two people already agreed in another debate (or elsewhere in this one). */
+  groundRef?: ClaimRef & { version: number }
   source?: ClaimSource
   aiSuggested?: boolean
   /** Goes up by one each time the author changes the wording. Missing means 1. */
@@ -182,6 +184,44 @@ export interface Rewording {
   reply: string | null
   respondedBy: string | null
   createdAt?: Time
+}
+
+/** A claim both people have agreed, listed for reuse in any of their debates. */
+export interface GroundEntry {
+  id: string
+  debateId: string
+  claimId: string
+  /** The side that accepted it (the other side posted it). */
+  side: SideId
+  text: string
+  version: number
+  by: string
+  at?: Time
+}
+
+/** An agreed term meaning, or an agreed change of wording, between the same two people. */
+export interface GlossaryEntry {
+  id: string
+  debateId: string
+  kind: 'term' | 'wording'
+  claimId: string
+  termId: string | null
+  defId: string | null
+  rewordingId: string | null
+  phrase: string
+  /** kind 'term': what the phrase means. */
+  meaning: string | null
+  /** kind 'wording': the wording to use instead of `phrase`. */
+  replacement: string | null
+  by: string
+  at?: Time
+}
+
+/** Live status of a claim that another box reuses through groundRef. */
+export interface GroundedStatus {
+  status: 'proposed' | 'agreed' | 'changed' | 'unsettled' | 'disputed'
+  accepted: boolean
+  title?: string
 }
 
 export interface Link {
@@ -262,4 +302,6 @@ export interface DebateMap {
   definitions?: Definition[]
   rewordings?: Rewording[]
   versions?: ClaimVersion[]
+  /** For boxes that reuse an agreed claim: that claim's live status, by box id. */
+  grounded?: Record<string, GroundedStatus>
 }

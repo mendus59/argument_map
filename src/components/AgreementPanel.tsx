@@ -1,6 +1,7 @@
 // The heart of a claim between two people: does the other side accept it, which
 // terms need defining, and is the wording fair?
 import { useState, type FormEvent } from 'react'
+import { Link as RouterLink } from 'react-router-dom'
 import type { User } from 'firebase/auth'
 import { db } from '../firebase'
 import {
@@ -66,6 +67,7 @@ export function AgreementSection({
   role,
   subs,
   onSelect,
+  pair,
 }: {
   map: DebateMap
   claim: Claim
@@ -73,9 +75,12 @@ export function AgreementSection({
   role: Role
   subs?: Map<string, SubStatus>
   onSelect?: (s: Selection) => void
+  /** The two people's key, when the viewer is one of them (see model/pair.ts). */
+  pair?: string
 }) {
   const a = claimAgreement(map, claim)
   const shaken = ripple(map, subs).get(claim.id)
+
   const [open, setOpen] = useState<null | 'define' | 'reword'>(null)
   const [error, setError] = useState<string | null>(null)
   const answering = role.leader && role.side === a.opponent
@@ -122,17 +127,17 @@ export function AgreementSection({
           {a.acceptance?.value === 'accepted' && a.acceptance.version === a.version ? (
             <span className="small ok">You accepted this.</span>
           ) : (
-            <button className="btn pri small-btn" type="button" onClick={() => run(answerClaim(db, user, map.debate.id, claim, role.side!, 'accepted'))}>
+            <button className="btn pri small-btn" type="button" onClick={() => run(answerClaim(db, user, map.debate.id, claim, role.side!, 'accepted', pair))}>
               Accept{a.status === 'changed' ? ' new wording' : ''}
             </button>
           )}
           {a.acceptance?.value !== 'disputed' && (
-            <button className="btn small-btn" type="button" onClick={() => run(answerClaim(db, user, map.debate.id, claim, role.side!, 'disputed'))}>
+            <button className="btn small-btn" type="button" onClick={() => run(answerClaim(db, user, map.debate.id, claim, role.side!, 'disputed', pair))}>
               Dispute
             </button>
           )}
           {a.acceptance && (
-            <button className="linklike small" type="button" onClick={() => run(withdrawAnswer(db, map.debate.id, claim.id, role.side!))}>
+            <button className="linklike small" type="button" onClick={() => run(withdrawAnswer(db, map.debate.id, claim.id, role.side!, pair))}>
               Take back my answer
             </button>
           )}
@@ -152,7 +157,7 @@ export function AgreementSection({
         </div>
       )}
       {open === 'define' && role.side && (
-        <DefineForm map={map} claim={claim} user={user} side={role.side} onDone={() => setOpen(null)} />
+        <DefineForm map={map} claim={claim} user={user} side={role.side} pair={pair} onDone={() => setOpen(null)} />
       )}
       {open === 'reword' && role.side && (
         <RewordForm map={map} claim={claim} user={user} side={role.side} onDone={() => setOpen(null)} />
@@ -163,7 +168,7 @@ export function AgreementSection({
         <div className="stack-xs">
           <span className="eyebrow">Terms</span>
           {a.terms.map((t) => (
-            <TermCard key={t.term.id} map={map} state={t} user={user} role={role} />
+            <TermCard key={t.term.id} map={map} state={t} user={user} role={role} pair={pair} />
           ))}
         </div>
       )}
@@ -172,7 +177,7 @@ export function AgreementSection({
         <div className="stack-xs">
           <span className="eyebrow">Wording challenges</span>
           {a.openRewordings.map((r) => (
-            <RewordingCard key={r.id} map={map} claim={claim} r={r} user={user} />
+            <RewordingCard key={r.id} map={map} claim={claim} r={r} user={user} pair={pair} />
           ))}
         </div>
       )}
@@ -199,7 +204,7 @@ export function AgreementSection({
   )
 }
 
-function DefineForm({ map, claim, user, side, onDone }: { map: DebateMap; claim: Claim; user: User; side: SideId; onDone: () => void }) {
+function DefineForm({ map, claim, user, side, pair, onDone }: { map: DebateMap; claim: Claim; user: User; side: SideId; pair?: string; onDone: () => void }) {
   const [phrase, setPhrase] = useState(() => highlighted(claim))
   const [meaning, setMeaning] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -209,7 +214,7 @@ function DefineForm({ map, claim, user, side, onDone }: { map: DebateMap; claim:
     e.preventDefault()
     if (!inClaim) return
     try {
-      if (existing) await proposeDefinition(db, user, map.debate.id, side, existing, meaning)
+      if (existing) await proposeDefinition(db, user, map.debate.id, side, existing, meaning, pair)
       else await openTerm(db, user, map.debate.id, side, claim.id, phrase, meaning)
       onDone()
     } catch (err) {
@@ -293,7 +298,7 @@ function RewordForm({ map, claim, user, side, onDone }: { map: DebateMap; claim:
 
 const KIND_LABEL: Record<Definition['kind'], string> = { definition: 'defines it as', counter: 'counters with', addendum: 'adds' }
 
-function TermCard({ map, state, user, role }: { map: DebateMap; state: TermState; user: User; role: Role }) {
+function TermCard({ map, state, user, role, pair }: { map: DebateMap; state: TermState; user: User; role: Role; pair?: string }) {
   const { term, current, history } = state
   const [mode, setMode] = useState<null | 'reject' | 'redefine'>(null)
   const [kind, setKind] = useState<'counter' | 'addendum'>('counter')
@@ -342,7 +347,7 @@ function TermCard({ map, state, user, role }: { map: DebateMap; state: TermState
       {error && <small className="error">{error}</small>}
       {canAnswer && mode === null && (
         <span className="row-sm">
-          <button className="btn pri small-btn" type="button" onClick={() => act(acceptDefinition(db, user, map.debate.id, current!))}>
+          <button className="btn pri small-btn" type="button" onClick={() => act(acceptDefinition(db, user, map.debate.id, current!, { pair, phrase: term.phrase, meaning: meaningOf(current!, history) }))}>
             Accept
           </button>
           <button className="btn small-btn" type="button" onClick={() => setMode('reject')}>
@@ -364,7 +369,7 @@ function TermCard({ map, state, user, role }: { map: DebateMap; state: TermState
             act(
               mode === 'reject'
                 ? rejectDefinition(db, user, map.debate.id, role.side, current!, { kind, text })
-                : proposeDefinition(db, user, map.debate.id, role.side, term, text),
+                : proposeDefinition(db, user, map.debate.id, role.side, term, text, pair),
             )
           }}
         >
@@ -421,7 +426,7 @@ function TermCard({ map, state, user, role }: { map: DebateMap; state: TermState
   )
 }
 
-function RewordingCard({ map, claim, r, user }: { map: DebateMap; claim: Claim; r: Rewording; user: User }) {
+function RewordingCard({ map, claim, r, user, pair }: { map: DebateMap; claim: Claim; r: Rewording; user: User; pair?: string }) {
   const [declining, setDeclining] = useState(false)
   const [reply, setReply] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -443,7 +448,7 @@ function RewordingCard({ map, claim, r, user }: { map: DebateMap; claim: Claim; 
       {error && <small className="error">{error}</small>}
       {mine && !declining && (
         <span className="row-sm">
-          <button className="btn pri small-btn" type="button" disabled={!stillThere} onClick={() => run(acceptRewording(db, user, map.debate.id, claim, r))}>
+          <button className="btn pri small-btn" type="button" disabled={!stillThere} onClick={() => run(acceptRewording(db, user, map.debate.id, claim, r, pair))}>
             Use this wording
           </button>
           <button className="btn small-btn" type="button" onClick={() => setDeclining(true)}>
@@ -472,5 +477,21 @@ function RewordingCard({ map, claim, r, user }: { map: DebateMap; claim: Claim; 
       )}
       {!mine && <p className="small muted">Waiting for {nameOf(map, claim.authorUid)} to take it or keep their wording.</p>}
     </div>
+  )
+}
+
+/** A box that reuses a claim both people already agreed: its status follows the original. */
+export function GroundedNote({ map, claim }: { map: DebateMap; claim: Claim }) {
+  const g = map.grounded?.[claim.id]
+  const ref = claim.groundRef!
+  const here = ref.debateId === map.debate.id
+  return (
+    <section className="agreement stack-sm">
+      <StatusPill status={g?.status ?? 'proposed'} />
+      <p className="small muted">
+        You both agreed this {here ? 'earlier in this debate' : <>in <RouterLink to={`/d/${ref.debateId}`}>{g?.title ?? 'another debate'}</RouterLink></>}, so it isn’t argued again here.{' '}
+        {g && g.status !== 'agreed' && 'It has changed or is being reconsidered there, so conclusions resting on it here are in question too.'}
+      </p>
+    </section>
   )
 }

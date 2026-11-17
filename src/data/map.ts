@@ -9,6 +9,8 @@ export interface PremiseInput {
   source?: ClaimSource
   /** Cites a claim settled in a resolved sub-debate. */
   settledRef?: { debateId: string; claimId: string }
+  /** Reuses a claim both people already agreed. */
+  groundRef?: { debateId: string; claimId: string; version: number }
 }
 
 /** Adds a reason or objection: new co-premise claims plus the link joining them to the target. */
@@ -27,7 +29,7 @@ export async function addArgument(
   for (const p of premises) {
     const ref = doc(collection(debateRef, 'claims'))
     ids.push(ref.id)
-    batch.set(ref, { text: p.text.trim(), type: p.type, authorUid: user.uid, side, placed: true, ...(p.source ? { source: p.source } : {}), ...(p.settledRef ? { settledRef: p.settledRef } : {}), createdAt: serverTimestamp() })
+    batch.set(ref, { text: p.text.trim(), type: p.type, authorUid: user.uid, side, placed: true, ...(p.source ? { source: p.source } : {}), ...(p.settledRef ? { settledRef: p.settledRef } : {}), ...(p.groundRef ? { groundRef: p.groundRef } : {}), createdAt: serverTimestamp() })
   }
   const linkRef = doc(collection(debateRef, 'links'))
   batch.set(linkRef, { kind, targetClaimId, premiseClaimIds: ids, authorUid: user.uid, side, createdAt: serverTimestamp() })

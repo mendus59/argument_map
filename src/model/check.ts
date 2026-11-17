@@ -26,7 +26,14 @@ export function checkMap(map: DebateMap, now = Date.now()): MapCheck {
   return {
     cruxes: [...findCruxes(map)],
     missingStances: sides
-      .map((side) => ({ side, claimIds: onMap.filter((c) => !stanceOf(map, c.id, side)).map((c) => c.id) }))
+      .map((side) => ({
+        side,
+        // Native debates: the other side's boxes this side hasn't answered yet.
+        claimIds: (map.debate.origin === 'native'
+          ? onMap.filter((c) => c.side !== side && !c.groundRef && !(map.acceptances ?? []).some((a) => a.claimId === c.id && a.side === side))
+          : onMap.filter((c) => !stanceOf(map, c.id, side))
+        ).map((c) => c.id),
+      }))
       .filter((m) => m.claimIds.length > 0),
     unsourced: onMap.filter((c) => (c.type === 'fact' || c.type === 'prediction') && !sourced.has(c.id)).map((c) => c.id),
     oldNotes: map.claims

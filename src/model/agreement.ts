@@ -1,6 +1,6 @@
 // How far two sides have got towards agreeing a claim: its answer from the other
 // side, the terms in it being defined, and challenges to its wording.
-import type { Acceptance, Claim, DebateMap, Definition, Rewording, SideId, Term } from './types'
+import type { Acceptance, Claim, DebateMap, Definition, GroundedStatus, Rewording, SideId, Term } from './types'
 
 export const otherSide = (s: SideId): SideId => (s === 'for' ? 'against' : 'for')
 export const versionOf = (c: Pick<Claim, 'version'>) => c.version ?? 1
@@ -66,6 +66,12 @@ export const STATUS_LABEL: Record<ClaimStatus, string> = {
 
 export function claimAgreement(map: DebateMap, claim: Claim): ClaimAgreement {
   const opponent = otherSide(claim.side)
+  // A reused agreed claim takes its status from the original.
+  if (claim.groundRef) {
+    const g = map.grounded?.[claim.id]
+    const acceptance = g?.accepted ? { claimId: claim.id, side: opponent, version: versionOf(claim), value: 'accepted' as const, by: '' } : undefined
+    return { status: g?.status ?? 'proposed', opponent, acceptance, version: versionOf(claim), terms: [], openTerms: [], openRewordings: [] }
+  }
   const acceptance = (map.acceptances ?? []).find((a) => a.claimId === claim.id && a.side === opponent)
   const version = versionOf(claim)
   const terms = (map.terms ?? []).filter((t) => t.claimId === claim.id).map((t) => termState(t, map.definitions ?? []))
@@ -103,3 +109,24 @@ export function replacePhrase(text: string, phrase: string, replacement: string)
 }
 
 const normalise = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
+
+/**
+ * Live status of an agreed claim reused elsewhere, from the original's own answer,
+ * terms and wording. A reuse made of an older wording counts as changed.
+ */
+export function groundedStatus(
+  src: { claim: Claim | null; acceptances: Acceptance[]; terms: Term[]; definitions: Definition[]; rewordings: Rewording[]; title?: string | null },
+  refVersion: number,
+): GroundedStatus {
+  if (!src.claim) return { status: 'disputed', accepted: false, title: src.title ?? undefined }
+  const mini = { acceptances: src.acceptances, terms: src.terms, definitions: src.definitions, rewordings: src.rewordings } as unknown as DebateMap
+  const a = claimAgreement(mini, src.claim)
+  const accepted = a.acceptance?.value === 'accepted'
+  const status = accepted && versionOf(src.claim) !== refVersion ? 'changed' : a.status
+  return { status, accepted, title: src.title ?? undefined }
+}
+
+/** Agreed changes of wording that `text` still goes against, e.g. it says “illegal immigrant” where both agreed “undocumented immigrant”. */
+export function wordingSlips<T extends { phrase: string; replacement: string | null }>(text: string, wording: T[]): T[] {
+  return wording.filter((w) => w.replacement !== null && containsPhrase(text, w.phrase) && !containsPhrase(text, w.replacement))
+}

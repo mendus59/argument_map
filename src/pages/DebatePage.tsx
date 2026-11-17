@@ -6,6 +6,9 @@ import { roleIn, watchDebateMap } from '../data/debates'
 import { InviteButton } from '../components/InviteButton'
 import { ImportedDebate } from './ImportedDebate'
 import { DebateView } from '../components/DebateView'
+import { useCommonGround, useGrounded } from '../data/ground'
+import { inPair, pairKey } from '../model/pair'
+import { CommonGroundPanel } from '../components/CommonGroundPanel'
 import { EditPanel } from '../components/EditPanel'
 import { RestateSetting } from '../components/HonestPanels'
 import { ActivityFeed, PresenceChips, RoundBadge, RoundControls } from '../components/LivePanels'
@@ -20,11 +23,15 @@ import type { Debate, DebateMap, SideId } from '../model/types'
 
 export default function DebatePage() {
   const { id = '' } = useParams()
-  const [map, setMap] = useState<DebateMap | null | undefined>(undefined)
+  const [rawMap, setMap] = useState<DebateMap | null | undefined>(undefined)
+  // Boxes that reuse an agreed claim follow that claim's live status.
+  const map = useGrounded(db, rawMap)
   const [error, setError] = useState<string | null>(null)
   const [selection, setSelection] = useState<Selection>(null)
   const { user } = useAuth()
   const native = map?.debate.origin === 'native'
+  const pair = map && user && native && inPair(map.debate, user.uid) ? pairKey(map.debate) : null
+  const common = useCommonGround(db, pair)
   const me = map && user ? roleIn(map.debate, user.uid) : null
   const { online, setEditing } = usePresence(db, id, native ? user : null, me?.side ?? null)
   const lastVisit = useLastVisit(db, id, native ? user : null)
@@ -98,7 +105,8 @@ export default function DebatePage() {
           }}
         >
           {map.debate.root && !selection && <OutcomePanel debate={map.debate} user={user} />}
-          {user && role && <EditPanel map={map} selection={selection} user={user} role={role} onSelect={setSelection} tree={treeInfo} />}
+          {user && role && <EditPanel map={map} selection={selection} user={user} role={role} onSelect={setSelection} tree={treeInfo} common={common} />}
+          {!selection && common && <CommonGroundPanel map={map} common={common} />}
           {!selection && <TreePanel nodes={treeInfo.below} current={id} />}
           {!selection && <ActivityFeed map={map} lastVisit={user ? lastVisit : undefined} me={user?.uid} onSelect={setSelection} />}
           <TeamPanel debate={map.debate} />
