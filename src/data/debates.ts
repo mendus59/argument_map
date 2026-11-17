@@ -14,7 +14,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore'
 import type { User } from 'firebase/auth'
-import type { Claim, Comment, Debate, DebateMap, Evidence, Link, SideId, Stance } from '../model/types'
+import type { Acceptance, Claim, ClaimVersion, Comment, Debate, DebateMap, Definition, Evidence, Link, Rewording, SideId, Stance, Term } from '../model/types'
 
 export type InviteRole = 'leader' | 'member' | 'reader'
 
@@ -120,6 +120,11 @@ export function watchDebateMap(db: Firestore, debateId: string, onChange: (map: 
   let stances: Stance[] = []
   let evidence: Evidence[] = []
   let comments: Comment[] = []
+  let acceptances: Acceptance[] = []
+  let terms: Term[] = []
+  let definitions: Definition[] = []
+  let rewordings: Rewording[] = []
+  let versions: ClaimVersion[] = []
   // A sub-debate shares its root's teams, and its conclusion (and that box's
   // stances) live in the debate it was forked from.
   let root: Debate | null = null
@@ -148,6 +153,11 @@ export function watchDebateMap(db: Firestore, debateId: string, onChange: (map: 
       stances: external ? [...outside.stances, ...stances] : stances,
       evidence,
       comments,
+      acceptances,
+      terms,
+      definitions,
+      rewordings,
+      versions,
     })
   }
   const follow = (d: Debate) => {
@@ -194,12 +204,34 @@ export function watchDebateMap(db: Firestore, debateId: string, onChange: (map: 
     }
   }
 
+  // Agreement on claims. Only native debates have it; readers of imported ones may not read it.
+  let agreementUnsubs: (() => void)[] = []
+  const watchAgreement = () => {
+    const watch = <T,>(name: string, set: (rows: T[]) => void) =>
+      onSnapshot(
+        collection(ref, name),
+        (snap) => {
+          set(snap.docs.map((d) => ({ ...(d.data() as Omit<T, 'id'>), id: d.id }) as T))
+          emit()
+        },
+        onError,
+      )
+    agreementUnsubs = [
+      watch<Acceptance>('acceptances', (r) => (acceptances = r)),
+      watch<Term>('terms', (r) => (terms = r)),
+      watch<Definition>('definitions', (r) => (definitions = r)),
+      watch<Rewording>('rewordings', (r) => (rewordings = r)),
+      watch<ClaimVersion>('claimVersions', (r) => (versions = r)),
+    ]
+  }
+
   const unsubs = [
     onSnapshot(
       ref,
       (snap) => {
         debate = snap.exists() ? { ...(snap.data() as Omit<Debate, 'id'>), id: snap.id } : null
         if (debate) follow(debate)
+        if (debate && debate.origin !== 'imported' && !agreementUnsubs.length) watchAgreement()
         emit()
       },
       onError,
@@ -249,6 +281,7 @@ export function watchDebateMap(db: Firestore, debateId: string, onChange: (map: 
   ]
   return () => {
     unsubs.forEach((u) => u())
+    agreementUnsubs.forEach((u) => u())
     rootWatch?.stop()
     outsideWatch?.stop()
   }

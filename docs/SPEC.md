@@ -50,6 +50,29 @@ Resolved sub-debates and references to settled claims count as 0.
 
 **Settled reference.** A claim from a resolved debate or sub-debate can be cited in any other debate. It shows as settled, links back to where it was settled, and adds nothing to depth.
 
+## Agreeing claims (redesign, November 2026)
+
+Native debates are being reworked into a collaborative space for two people, built around agreeing claims step by step. Imported debates keep stances.
+
+- **Answer.** The other side's leader accepts or disputes a claim. The answer is tied to the claim's version, so it stops counting once the wording changes.
+- **Terms.** Either side highlights a phrase and asks for it to be defined, or proposes a definition. The other side's leader accepts it, or rejects it with a counter-definition or an addendum (written in the same step). When both sides have rejected a definition, the term is flagged as a real disagreement. Either side can propose a new definition later, which reopens the term.
+- **Wording.** The other side can challenge a phrase ("illegal immigrant" → "undocumented immigrant") and say why. Only the claim's author takes the suggestion, which moves the claim to a new version, or keeps their wording with a reply.
+- **Versions.** Every edit keeps the old wording in `claimVersions`, and rules refuse an edit that skips it.
+- **Status** of a claim, worked out in the browser: waiting for an answer, agreed (accepted at the current version with every term agreed and no open wording challenge), open questions, changed since accepted, or disputed.
+
+```
+debates/{id}/acceptances/{claimId}__{side}  claimId, side, version, value: 'accepted' | 'disputed', by, at
+debates/{id}/terms/{termId}                 claimId, phrase, openedBy, side, createdAt
+debates/{id}/definitions/{defId}            termId, claimId, text, kind: 'definition' | 'counter' | 'addendum', parentId,
+                                            by, side, status: 'pending' | 'accepted' | 'rejected', respondedBy, answeredWith
+debates/{id}/rewordings/{id}                claimId, claimVersion, phrase, suggestion, reason, by, side,
+                                            status: 'open' | 'accepted' | 'declined', reply, respondedBy
+debates/{id}/claimVersions/{claimId}__{n}   claimId, version, text, type, by, at
+claims/{claimId}.version                    starts at 1 (missing means 1)
+```
+
+Redesign milestones: (1) answers, terms, wording and versions (done); (2) ripple: conclusions that depend on an unsettled claim show as in question; (3) common ground and a glossary shared between the same two people across debates, with a term picker; (4) a conversation-first layout with the tree beside it (chosen by Patrick, 2026-11-17); (5) spinning disputes off into sub-debates and a core-disagreement summary.
+
 ## Honest-debate features in v1
 
 - **Restate before you rebut.** To refute a claim you first paraphrase it, and the author confirms. On by default; a leader can turn it off for their debate.

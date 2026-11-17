@@ -213,8 +213,11 @@ service cloud.firestore {
           && isMemberOf(teamOf(debateAfter(debateId)), request.resource.data.side);
         // Only the author changes the wording. Any debater can place an unplaced note.
         allow update: if signedIn() && (
+          // Each change moves the claim to its next version and keeps the old wording (see claimVersions).
           (resource.data.authorUid == uid()
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'type', 'updatedAt'])
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'type', 'version', 'updatedAt'])
+            && request.resource.data.version == resource.data.get('version', 1) + 1
+            && existsAfter(/databases/$(database)/documents/debates/$(debateId)/claimVersions/$(claimId + '__' + string(resource.data.get('version', 1))))
             && validClaimBody(request.resource.data))
           || (isAnyMember(team(debateId))
             && resource.data.placed == false && request.resource.data.placed == true
@@ -258,6 +261,129 @@ service cloud.firestore {
           && request.resource.data.confidence is int
           && request.resource.data.confidence >= 0 && request.resource.data.confidence <= 100
           && isLeader(team(debateId), request.resource.data.side);
+      }
+    }
+
+    // ---- Agreeing claims ---------------------------------------------------
+    // The other side answers a claim, terms in it get defined, and its wording can be
+    // challenged. Only the poster changes the wording; each change keeps the old version.
+    function claimDoc(debateId, claimId) { return get(/databases/$(database)/documents/debates/$(debateId)/claims/$(claimId)).data; }
+    function claimDocAfter(debateId, claimId) { return getAfter(/databases/$(database)/documents/debates/$(debateId)/claims/$(claimId)).data; }
+    function defPath(debateId, defId) { return /databases/$(database)/documents/debates/$(debateId)/definitions/$(defId); }
+    function shortText(t, max) { return t is string && t.size() > 0 && t.size() <= max; }
+
+    // An earlier wording, written by the author in the same batch as the edit that replaces it.
+    match /debates/{debateId}/claimVersions/{versionId} {
+      allow read: if canRead(team(debateId));
+      allow write: if isAdmin();
+      allow create: if signedIn() && validVersion(debateId, versionId, request.resource.data);
+
+      function validVersion(debateId, versionId, v) {
+        let before = claimDoc(debateId, v.claimId);
+        return v.keys().hasOnly(['claimId', 'version', 'text', 'type', 'by', 'at'])
+          && v.by == uid()
+          && before.authorUid == uid()
+          && versionId == v.claimId + '__' + string(v.version)
+          && v.version == before.get('version', 1)
+          && v.text == before.text
+          && v.type == before.type
+          && claimDocAfter(debateId, v.claimId).get('version', 1) == v.version + 1;
+      }
+    }
+
+    // The other side's answer to a claim, for the version it was worded at. Their leader sets it.
+    match /debates/{debateId}/acceptances/{answerId} {
+      allow read: if canRead(team(debateId));
+      allow write: if isAdmin();
+      allow create, update: if signedIn() && validAnswer(debateId, answerId, request.resource.data);
+      allow delete: if signedIn() && isLeader(team(debateId), resource.data.side);
+
+      function validAnswer(debateId, answerId, a) {
+        let c = claimDoc(debateId, a.claimId);
+        return a.keys().hasOnly(['claimId', 'side', 'version', 'value', 'by', 'at'])
+          && validSide(a.side)
+          && answerId == a.claimId + '__' + a.side
+          && a.value in ['accepted', 'disputed']
+          && a.by == uid()
+          && isLeader(team(debateId), a.side)
+          && c.side != a.side
+          && a.version == c.get('version', 1);
+      }
+    }
+
+    // A phrase in a claim that either side wants defined.
+    match /debates/{debateId}/terms/{termId} {
+      allow read: if canRead(team(debateId));
+      allow write: if isAdmin();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['claimId', 'phrase', 'openedBy', 'side', 'createdAt'])
+        && request.resource.data.openedBy == uid()
+        && validSide(request.resource.data.side)
+        && isMemberOf(team(debateId), request.resource.data.side)
+        && shortText(request.resource.data.phrase, 200)
+        && exists(/databases/$(database)/documents/debates/$(debateId)/claims/$(request.resource.data.claimId));
+    }
+
+    // A proposed meaning for a term. The other side's leader accepts it, or rejects it
+    // together with a counter-definition or an addendum (in the same batch).
+    match /debates/{debateId}/definitions/{defId} {
+      allow read: if canRead(team(debateId));
+      allow write: if isAdmin();
+      allow create: if signedIn() && validDefinition(debateId, defId, request.resource.data);
+      allow update: if signedIn()
+        && resource.data.status == 'pending'
+        && request.resource.data.respondedBy == uid()
+        && isLeader(team(debateId), otherSide(resource.data.side))
+        && ((request.resource.data.status == 'accepted'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'respondedBy', 'respondedAt']))
+          || (request.resource.data.status == 'rejected'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'respondedBy', 'respondedAt', 'answeredWith'])
+              && request.resource.data.answeredWith is string
+              && getAfter(defPath(debateId, request.resource.data.answeredWith)).data.parentId == defId
+              && getAfter(defPath(debateId, request.resource.data.answeredWith)).data.side == otherSide(resource.data.side)));
+
+      function validDefinition(debateId, defId, d) {
+        let term = getAfter(/databases/$(database)/documents/debates/$(debateId)/terms/$(d.termId)).data;
+        return d.keys().hasOnly(['termId', 'claimId', 'text', 'kind', 'parentId', 'by', 'side', 'status', 'respondedBy', 'answeredWith', 'createdAt'])
+          && d.by == uid()
+          && validSide(d.side)
+          && isMemberOf(team(debateId), d.side)
+          && shortText(d.text, 2000)
+          && d.status == 'pending' && d.respondedBy == null && d.answeredWith == null
+          && term.claimId == d.claimId
+          && ((d.kind == 'definition' && d.parentId == null)
+            || (d.kind in ['counter', 'addendum'] && d.parentId is string
+              && getAfter(defPath(debateId, d.parentId)).data.termId == d.termId
+              && getAfter(defPath(debateId, d.parentId)).data.status == 'rejected'
+              && getAfter(defPath(debateId, d.parentId)).data.answeredWith == defId));
+      }
+    }
+
+    // A challenge to the wording of the other side's claim. Its author takes it or declines.
+    match /debates/{debateId}/rewordings/{rewordingId} {
+      allow read: if canRead(team(debateId));
+      allow write: if isAdmin();
+      allow create: if signedIn() && validRewording(debateId, request.resource.data);
+      allow update: if signedIn()
+        && resource.data.status == 'open'
+        && claimDoc(debateId, resource.data.claimId).authorUid == uid()
+        && request.resource.data.respondedBy == uid()
+        && request.resource.data.status in ['accepted', 'declined']
+        && (request.resource.data.reply == null || (request.resource.data.reply is string && request.resource.data.reply.size() <= 2000))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reply', 'respondedBy', 'respondedAt']);
+
+      function validRewording(debateId, r) {
+        let c = claimDoc(debateId, r.claimId);
+        return r.keys().hasOnly(['claimId', 'claimVersion', 'phrase', 'suggestion', 'reason', 'by', 'side', 'status', 'reply', 'respondedBy', 'createdAt'])
+          && r.by == uid()
+          && validSide(r.side)
+          && isMemberOf(team(debateId), r.side)
+          && c.side != r.side
+          && r.claimVersion == c.get('version', 1)
+          && shortText(r.phrase, 300)
+          && r.suggestion is string && r.suggestion.size() <= 300
+          && r.reason is string && r.reason.size() <= 1000
+          && r.status == 'open' && r.reply == null && r.respondedBy == null;
       }
     }
 

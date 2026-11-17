@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { Background, Controls, MarkerType, Panel, ReactFlow, ReactFlowProvider, useReactFlow, type Edge } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { DebateMap } from '../model/types'
+import { claimAgreement } from '../model/agreement'
 import { findCruxes, stanceOf } from '../model/crux'
 import { layoutMap, CLAIM_W } from './layout'
 import { ClaimNode, GroupNode, type ClaimNodeType, type GroupNodeType, type SubStatus } from './nodes'
@@ -49,6 +50,8 @@ function MapCanvas({ map, selection, onSelect, highlight, writers, subs }: Props
     const sides = { for: map.debate.sides.for.label || 'For', against: map.debate.sides.against.label || 'Against' }
     // On an imported debate the poster is the admin who mapped it, not a debater, so only the speaker counts.
     const imported = map.debate.origin === 'imported'
+    // Native debates show how far each box is agreed; imported ones keep the stance chips.
+    const native = map.debate.origin === 'native'
     const byOf = (c: (typeof map.claims)[number]) => c.source?.speaker ?? (imported ? null : (map.debate.people[c.authorUid]?.name ?? null))
     const objectionPremises = new Set(map.links.filter((l) => l.kind === 'objection').flatMap((l) => l.premiseClaimIds))
     const groups: GroupNodeType[] = layout.groups.map((g) => ({
@@ -84,6 +87,7 @@ function MapCanvas({ map, selection, onSelect, highlight, writers, subs }: Props
         sub: subs?.get(p.claim.id),
         sides,
         by: byOf(p.claim),
+        agreement: native ? claimAgreement(map, p.claim).status : undefined,
       },
       style: { width: CLAIM_W },
       draggable: false,
