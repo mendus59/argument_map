@@ -2,6 +2,7 @@ import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import type { Claim, Link, Outcome, SideId, Stance } from '../model/types'
 import { formatTime } from '../import/transcript'
 import { STATUS_LABEL, type ClaimStatus } from '../model/agreement'
+import type { InQuestion } from '../model/ripple'
 
 export type SubStatus = { id: string; status: 'open' | 'resolved'; outcome: Outcome | null; depth: number }
 
@@ -22,6 +23,8 @@ export type ClaimNodeData = {
   by: string | null
   /** How far the other side has agreed the box (native debates only). */
   agreement?: ClaimStatus
+  /** Rests on a premise that no longer holds. */
+  inQuestion?: InQuestion
 }
 export type GroupNodeData = {
   link: Link
@@ -80,9 +83,9 @@ function SideTag({ side, label, by }: { side: SideId; label: string; by: string 
 }
 
 export function ClaimNode({ data }: NodeProps<ClaimNodeType>) {
-  const { claim, role, stances, isCrux, evidenceCount, commentCount, selected, isNew, writers, sub, sides, by, agreement } = data
+  const { claim, role, stances, isCrux, evidenceCount, commentCount, selected, isNew, writers, sub, sides, by, agreement, inQuestion } = data
   return (
-    <div className={`claim-node ${role} side-${claim.side}${selected ? ' selected' : ''}${isNew ? ' new' : ''}`}>
+    <div className={`claim-node ${role} side-${claim.side}${selected ? ' selected' : ''}${isNew ? ' new' : ''}${inQuestion && !inQuestion.waiting ? ' in-question' : ''}`}>
       {isNew && <span className="badge new-badge">New</span>}
       {writers.length > 0 && <span className="writing">✎ {writers.join(', ')} writing…</span>}
       <Handle type="target" position={Position.Bottom} isConnectable={false} />
@@ -94,7 +97,17 @@ export function ClaimNode({ data }: NodeProps<ClaimNodeType>) {
       <p className="claim-text">{claim.text}</p>
       <div className="chips">
         {agreement ? (
-          <span className={`status-pill status-${agreement}`}>{STATUS_LABEL[agreement]}</span>
+          <>
+            <span className={`status-pill status-${agreement}`}>{STATUS_LABEL[agreement]}</span>
+            {inQuestion && (
+              <span
+                className={`status-pill ${inQuestion.waiting ? 'status-unsettled' : 'status-disputed'}`}
+                title={`Rests on ${inQuestion.causes.length === 1 ? 'a premise' : `${inQuestion.causes.length} premises`} that no longer hold${inQuestion.waiting ? ' while a sub-debate runs' : ''}`}
+              >
+                {inQuestion.waiting ? '⏸ On hold' : '⚠ In question'}
+              </span>
+            )}
+          </>
         ) : (
           <>
             <StanceChip side="for" label={sides.for} stance={stances.for} />

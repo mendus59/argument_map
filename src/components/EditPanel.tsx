@@ -169,7 +169,7 @@ function ClaimPanel({
         </>
       )}
       {claim.source && <SourceQuote src={claim.source} onSeek={source?.onSeek} />}
-      {map.debate.origin === 'native' && !borrowed && <AgreementSection map={map} claim={claim} user={user} role={role} />}
+      {map.debate.origin === 'native' && !borrowed && <AgreementSection map={map} claim={claim} user={user} role={role} subs={tree?.subs} onSelect={onSelect} />}
       {map.debate.origin === 'native' && borrowed && (
         <p className="small muted">
           Accept it, define its terms or challenge its wording in the{' '}
@@ -260,7 +260,7 @@ function EditClaimForm({ map, claim, user, onDone }: { map: DebateMap; claim: Cl
     <form className="stack-xs" onSubmit={save}>
       <textarea id="edit-claim-text" className="input" rows={3} maxLength={1000} required value={text} onChange={(e) => setText(e.target.value)} aria-label="Wording" />
       <TypeSelect id="edit-claim-type" value={type} onChange={setType} />
-      {accepted && <p className="hint">The other side accepted the current wording. If you change it, they’ll need to accept it again. The old wording stays in the history.</p>}
+      {accepted && <p className="hint">The other side accepted the current wording. If you change it, they’ll need to accept it again, and every conclusion resting on it will show as in question until they do. The old wording stays in the history.</p>}
       {error && <small className="error">{error}</small>}
       <span className="row-sm">
         <button className="btn pri small-btn" type="submit">

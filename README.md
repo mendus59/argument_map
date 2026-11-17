@@ -9,6 +9,7 @@ Parrhesia: lay out debates as shared argument maps and debate more constructivel
 - Two people or teams build a shared map of premises, reasons, objections and conclusions, and record where each side stands on every box.
 - Your opponent accepts or disputes each claim, asks for terms to be defined, and can challenge loaded wording.
 - Definitions go back and forth until agreed, with counter-definitions or addenda, so the real disagreement shows.
+- Change an agreed claim and every conclusion resting on it is flagged as in question until it's settled again.
 - Fork a pivotal premise into its own sub-debate.
 - Honest-debate tools: restate before you rebut, confidence on every stance, crux highlighting and a "fair point" concession.
 <!-- site-summary:end -->

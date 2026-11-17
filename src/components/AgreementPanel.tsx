@@ -16,6 +16,9 @@ import {
 } from '../data/agreement'
 import { STATUS_LABEL, claimAgreement, containsPhrase, meaningOf, replacePhrase, type ClaimStatus, type TermState } from '../model/agreement'
 import type { Claim, DebateMap, Definition, Rewording, SideId } from '../model/types'
+import { SHAKEN_LABEL, ripple } from '../model/ripple'
+import type { SubStatus } from '../map/nodes'
+import type { Selection } from '../map/ArgumentMap'
 
 interface Role {
   side: SideId | null
@@ -56,8 +59,23 @@ function explain(map: DebateMap, status: ClaimStatus, opponent: SideId, version:
   }
 }
 
-export function AgreementSection({ map, claim, user, role }: { map: DebateMap; claim: Claim; user: User; role: Role }) {
+export function AgreementSection({
+  map,
+  claim,
+  user,
+  role,
+  subs,
+  onSelect,
+}: {
+  map: DebateMap
+  claim: Claim
+  user: User
+  role: Role
+  subs?: Map<string, SubStatus>
+  onSelect?: (s: Selection) => void
+}) {
   const a = claimAgreement(map, claim)
+  const shaken = ripple(map, subs).get(claim.id)
   const [open, setOpen] = useState<null | 'define' | 'reword'>(null)
   const [error, setError] = useState<string | null>(null)
   const answering = role.leader && role.side === a.opponent
@@ -76,6 +94,28 @@ export function AgreementSection({ map, claim, user, role }: { map: DebateMap; c
         {a.version > 1 && <span className="small muted">version {a.version}</span>}
       </div>
       <p className="small muted">{explain(map, a.status, a.opponent, a.version)}</p>
+      {shaken && (
+        <div className={`ripple-note ${shaken.waiting ? 'waiting' : ''}`}>
+          <strong className="small">{shaken.waiting ? '⏸ On hold while a sub-debate runs' : '⚠ In question'}</strong>
+          <p className="small">
+            This rests on {shaken.causes.length === 1 ? 'a premise' : 'premises'} that no longer {shaken.causes.length === 1 ? 'holds' : 'hold'} as agreed. Settle{' '}
+            {shaken.causes.length === 1 ? 'it' : 'them'}, or spin {shaken.causes.length === 1 ? 'it' : 'them'} off into a sub-debate.
+          </p>
+          <ul className="history-list">
+            {shaken.causes.map((c) => {
+              const text = map.claims.find((x) => x.id === c.claimId)?.text ?? 'A premise'
+              return (
+                <li key={c.claimId} className="small">
+                  <button className="linklike" type="button" onClick={() => onSelect?.({ kind: 'claim', id: c.claimId })}>
+                    “{text.length > 80 ? `${text.slice(0, 80)}…` : text}”
+                  </button>{' '}
+                  <span className="muted">{SHAKEN_LABEL[c.reason]}</span>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
 
       {answering && (
         <div className="row-sm">
@@ -350,7 +390,7 @@ function TermCard({ map, state, user, role }: { map: DebateMap; state: TermState
           />
           {mode === 'reject' && <small className="muted">To reject a definition, offer your own or add to it, so you keep narrowing in on the real difference.</small>}
           {mode === 'redefine' && state.state === 'agreed' && (
-            <small className="muted">The term goes back to “waiting” until the other side answers, and this claim is open again.</small>
+            <small className="muted">The term goes back to “waiting” until the other side answers. Meanwhile this claim is open again, and conclusions resting on it show as in question.</small>
           )}
           <span className="row-sm">
             <button className="btn pri small-btn" type="submit" disabled={!text.trim()}>
