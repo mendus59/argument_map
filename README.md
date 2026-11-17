@@ -6,7 +6,7 @@
      See CLAUDE.md ("Site summary"). -->
 Parrhesia: lay out debates as shared argument maps and debate more constructively.
 
-- Two people or teams build a shared map of premises, reasons, objections and conclusions, and record where each side stands on every box.
+- Debate as a conversation between two people or teams, with the argument tree of reasons and objections built beside it.
 - Your opponent accepts or disputes each claim, asks for terms to be defined, and can challenge loaded wording.
 - Definitions go back and forth until agreed, with counter-definitions or addenda, so the real disagreement shows.
 - Agreed claims, terms and wording carry over to all your debates with the same person, and a change to one flags every conclusion resting on it.

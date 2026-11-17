@@ -5,7 +5,7 @@ import { db } from '../firebase'
 import { roleIn, watchDebateMap } from '../data/debates'
 import { InviteButton } from '../components/InviteButton'
 import { ImportedDebate } from './ImportedDebate'
-import { DebateView } from '../components/DebateView'
+import { ConversationView } from '../components/ConversationView'
 import { useCommonGround, useGrounded } from '../data/ground'
 import { inPair, pairKey } from '../model/pair'
 import { CommonGroundPanel } from '../components/CommonGroundPanel'
@@ -77,42 +77,47 @@ export default function DebatePage() {
   if (map.debate.origin === 'imported') return <ImportedDebate map={map} />
   const role = user ? roleIn(map.debate, user.uid) : null
   return (
-    <DebateView
-      map={map}
-      eyebrow="Debate"
-      selection={selection}
-      onSelect={setSelection}
-      highlight={highlight}
-      writers={writers}
-      subs={treeInfo.subs}
-      depth={treeInfo.depth}
-      crumbs={treeInfo.chain.length ? <Crumbs chain={treeInfo.chain} /> : undefined}
-      badges={
-        <>
-          <RoundBadge debate={map.debate} />
-          <PresenceChips map={map} online={online} />
-        </>
-      }
-      panel={
-        // Tells the others which box you're writing under while a text box has focus.
-        <div
-          className="stack"
-          onFocus={(e) => {
-            if (e.target instanceof HTMLTextAreaElement) setEditing(selection?.kind === 'claim' ? selection.id : null)
-          }}
-          onBlur={(e) => {
-            if (e.target instanceof HTMLTextAreaElement) setEditing(null)
-          }}
-        >
-          {map.debate.root && !selection && <OutcomePanel debate={map.debate} user={user} />}
-          {user && role && <EditPanel map={map} selection={selection} user={user} role={role} onSelect={setSelection} tree={treeInfo} common={common} />}
-          {!selection && common && <CommonGroundPanel map={map} common={common} />}
-          {!selection && <TreePanel nodes={treeInfo.below} current={id} />}
-          {!selection && <ActivityFeed map={map} lastVisit={user ? lastVisit : undefined} me={user?.uid} onSelect={setSelection} />}
-          <TeamPanel debate={map.debate} />
-        </div>
-      }
-    />
+    // Tells the others which box you're writing under while a text box has focus.
+    <div
+      className="contents"
+      onFocus={(e) => {
+        if (e.target instanceof HTMLTextAreaElement) setEditing(selection?.kind === 'claim' ? selection.id : null)
+      }}
+      onBlur={(e) => {
+        if (e.target instanceof HTMLTextAreaElement) setEditing(null)
+      }}
+    >
+      <ConversationView
+        map={map}
+        user={user}
+        role={role && (role.side || role.reader) ? role : null}
+        selection={selection}
+        onSelect={setSelection}
+        tree={treeInfo}
+        common={common}
+        highlight={highlight}
+        writers={writers}
+        subs={treeInfo.subs}
+        depth={treeInfo.depth}
+        crumbs={treeInfo.chain.length ? <Crumbs chain={treeInfo.chain} /> : undefined}
+        badges={
+          <>
+            <RoundBadge debate={map.debate} />
+            <PresenceChips map={map} online={online} />
+          </>
+        }
+        groundPanel={common ? <CommonGroundPanel map={map} common={common} /> : undefined}
+        morePanel={
+          <>
+            {map.debate.root && <OutcomePanel debate={map.debate} user={user} />}
+            {user && role && <EditPanel map={map} selection={null} user={user} role={role} onSelect={setSelection} tree={treeInfo} common={common} />}
+            <TreePanel nodes={treeInfo.below} current={id} />
+            <ActivityFeed map={map} lastVisit={user ? lastVisit : undefined} me={user?.uid} onSelect={setSelection} />
+            <TeamPanel debate={map.debate} />
+          </>
+        }
+      />
+    </div>
   )
 }
 

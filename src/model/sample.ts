@@ -61,4 +61,16 @@ export const sampleMap: DebateMap = {
   ],
   evidence: [],
   comments: [],
+  acceptances: [
+    { claimId: 'p1', side: 'against', version: 1, value: 'accepted', by: 'ben' },
+    { claimId: 'p3', side: 'against', version: 1, value: 'disputed', by: 'ben' },
+    { claimId: 'o1', side: 'for', version: 1, value: 'disputed', by: 'ana' },
+    { claimId: 'o2', side: 'for', version: 1, value: 'accepted', by: 'ana' },
+  ],
+  terms: [{ id: 't1', claimId: 'o2', phrase: 'part of the cost', openedBy: 'ana', side: 'for' }],
+  definitions: [
+    { id: 'd1', termId: 't1', claimId: 'o2', text: 'At least half of what each trip costs to run.', kind: 'definition', parentId: null, by: 'ben', side: 'against', status: 'pending', respondedBy: null },
+  ],
+  rewordings: [],
+  versions: [],
 }
