@@ -1,7 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import type { User } from 'firebase/auth'
 import { db } from '../firebase'
-import { addArgument, addNote, editClaim, placeNote, setStance, type PremiseInput } from '../data/map'
+import { addArgument, addNote, placeNote, setStance, type PremiseInput } from '../data/map'
+import { editClaim } from '../data/agreement'
+import { AgreementSection } from './AgreementPanel'
+import { claimAgreement } from '../model/agreement'
 import { stanceOf } from '../model/crux'
 import type { Claim, ClaimSource, ClaimType, DebateMap, Link, SideId, Stance, StanceValue } from '../model/types'
 import { formatTime } from '../import/transcript'
@@ -148,7 +151,7 @@ function ClaimPanel({
     <section className="stack-sm">
       <span className="eyebrow">{isConclusion ? 'Conclusion' : 'Selected box'}</span>
       {editing ? (
-        <EditClaimForm map={map} claim={claim} onDone={() => setEditing(false)} />
+        <EditClaimForm map={map} claim={claim} user={user} onDone={() => setEditing(false)} />
       ) : (
         <>
           <p className="selected-text">{claim.text}</p>
@@ -166,8 +169,15 @@ function ClaimPanel({
         </>
       )}
       {claim.source && <SourceQuote src={claim.source} onSeek={source?.onSeek} />}
-      <StanceSummary map={map} targetId={claim.id} />
-      {role.leader && role.side && (
+      {map.debate.origin === 'native' && !borrowed && <AgreementSection map={map} claim={claim} user={user} role={role} />}
+      {map.debate.origin === 'native' && borrowed && (
+        <p className="small muted">
+          Accept it, define its terms or challenge its wording in the{' '}
+          <RouterLink to={`/d/${map.debate.conclusion.debateId}`}>parent debate</RouterLink>.
+        </p>
+      )}
+      {map.debate.origin !== 'native' && <StanceSummary map={map} targetId={claim.id} />}
+      {map.debate.origin !== 'native' && role.leader && role.side && (
         <StanceEditor
           key={claim.id}
           map={map}
@@ -231,14 +241,15 @@ function ClaimPanel({
   )
 }
 
-function EditClaimForm({ map, claim, onDone }: { map: DebateMap; claim: Claim; onDone: () => void }) {
+function EditClaimForm({ map, claim, user, onDone }: { map: DebateMap; claim: Claim; user: User; onDone: () => void }) {
+  const accepted = map.debate.origin === 'native' && claimAgreement(map, claim).acceptance?.value === 'accepted'
   const [text, setText] = useState(claim.text)
   const [type, setType] = useState<ClaimType>(claim.type)
   const [error, setError] = useState<string | null>(null)
   async function save(e: FormEvent) {
     e.preventDefault()
     try {
-      await editClaim(db, map.debate.id, claim.id, text, type)
+      await editClaim(db, user, map.debate.id, claim.id, text, type)
       onDone()
     } catch (err) {
       console.error(err)
@@ -249,6 +260,7 @@ function EditClaimForm({ map, claim, onDone }: { map: DebateMap; claim: Claim; o
     <form className="stack-xs" onSubmit={save}>
       <textarea id="edit-claim-text" className="input" rows={3} maxLength={1000} required value={text} onChange={(e) => setText(e.target.value)} aria-label="Wording" />
       <TypeSelect id="edit-claim-type" value={type} onChange={setType} />
+      {accepted && <p className="hint">The other side accepted the current wording. If you change it, they’ll need to accept it again. The old wording stays in the history.</p>}
       {error && <small className="error">{error}</small>}
       <span className="row-sm">
         <button className="btn pri small-btn" type="submit">

@@ -1,6 +1,7 @@
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import type { Claim, Link, Outcome, SideId, Stance } from '../model/types'
 import { formatTime } from '../import/transcript'
+import { STATUS_LABEL, type ClaimStatus } from '../model/agreement'
 
 export type SubStatus = { id: string; status: 'open' | 'resolved'; outcome: Outcome | null; depth: number }
 
@@ -19,6 +20,8 @@ export type ClaimNodeData = {
   sides: Record<SideId, string>
   /** Who put the box up: the poster's name, or the speaker in the transcript. */
   by: string | null
+  /** How far the other side has agreed the box (native debates only). */
+  agreement?: ClaimStatus
 }
 export type GroupNodeData = {
   link: Link
@@ -77,7 +80,7 @@ function SideTag({ side, label, by }: { side: SideId; label: string; by: string 
 }
 
 export function ClaimNode({ data }: NodeProps<ClaimNodeType>) {
-  const { claim, role, stances, isCrux, evidenceCount, commentCount, selected, isNew, writers, sub, sides, by } = data
+  const { claim, role, stances, isCrux, evidenceCount, commentCount, selected, isNew, writers, sub, sides, by, agreement } = data
   return (
     <div className={`claim-node ${role} side-${claim.side}${selected ? ' selected' : ''}${isNew ? ' new' : ''}`}>
       {isNew && <span className="badge new-badge">New</span>}
@@ -90,8 +93,14 @@ export function ClaimNode({ data }: NodeProps<ClaimNodeType>) {
       </div>
       <p className="claim-text">{claim.text}</p>
       <div className="chips">
-        <StanceChip side="for" label={sides.for} stance={stances.for} />
-        <StanceChip side="against" label={sides.against} stance={stances.against} />
+        {agreement ? (
+          <span className={`status-pill status-${agreement}`}>{STATUS_LABEL[agreement]}</span>
+        ) : (
+          <>
+            <StanceChip side="for" label={sides.for} stance={stances.for} />
+            <StanceChip side="against" label={sides.against} stance={stances.against} />
+          </>
+        )}
         {isCrux && <span className="badge crux">Crux</span>}
         {claim.subDebateId && role !== 'conclusion' && <SubBadge sub={sub} />}
         {claim.settledRef && (

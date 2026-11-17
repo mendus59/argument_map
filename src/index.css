@@ -315,3 +315,15 @@ input.input[type="search"] { padding: 9px 11px; font-size: 15px; }
 .debate-item.admin-row { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; text-align: left; }
 .admin-row .tag { flex: none; }
 .admin-row .stack-xs { align-items: flex-start; }
+
+/* Agreeing claims: status of a box, terms being defined, wording challenges. */
+.status-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--sunk); color: var(--muted); white-space: nowrap; }
+.status-pill.status-agreed { background: var(--agree-soft); color: var(--agree); }
+.status-pill.status-disputed { background: var(--dis-soft); color: var(--dis); }
+.status-pill.status-changed, .status-pill.status-unsettled { background: var(--unsure-soft); color: var(--unsure); }
+.agreement { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--surface); }
+.term-card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--bg); display: flex; flex-direction: column; gap: 6px; }
+.term-card.term-agreed { border-color: color-mix(in srgb, var(--agree) 45%, var(--line)); }
+.term-card p { margin: 0; }
+.history-list { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.btn.on { background: var(--ink); color: var(--surface); }

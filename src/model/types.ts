@@ -110,6 +110,77 @@ export interface Claim {
   settledRef?: ClaimRef
   source?: ClaimSource
   aiSuggested?: boolean
+  /** Goes up by one each time the author changes the wording. Missing means 1. */
+  version?: number
+  createdAt?: Time
+}
+
+/** An earlier wording of a claim, kept when its author changes it. */
+export interface ClaimVersion {
+  claimId: string
+  version: number
+  text: string
+  type: ClaimType
+  by: string
+  at?: Time
+}
+
+/**
+ * The other side's answer to a claim: accepted or disputed, for one version of
+ * its wording. One per claim per side; only that side's leader sets it.
+ */
+export interface Acceptance {
+  claimId: string
+  side: SideId
+  version: number
+  value: 'accepted' | 'disputed'
+  by: string
+  at?: Time
+}
+
+/** A phrase in a claim that one side wants pinned down. Its definitions are proposed and answered in turn. */
+export interface Term {
+  id: string
+  claimId: string
+  phrase: string
+  openedBy: string
+  side: SideId
+  createdAt?: Time
+}
+
+/**
+ * A proposed meaning for a term. The other side accepts it, or rejects it with
+ * a counter-definition or an addendum (a definition whose parentId is the rejected one).
+ */
+export interface Definition {
+  id: string
+  termId: string
+  claimId: string
+  text: string
+  kind: 'definition' | 'counter' | 'addendum'
+  parentId: string | null
+  by: string
+  side: SideId
+  status: 'pending' | 'accepted' | 'rejected'
+  respondedBy: string | null
+  /** For a rejection: the counter-definition or addendum that answered it. */
+  answeredWith?: string | null
+  createdAt?: Time
+}
+
+/** A challenge to a claim's wording: replace `phrase` with `suggestion`. The claim's author takes it or declines. */
+export interface Rewording {
+  id: string
+  claimId: string
+  claimVersion: number
+  phrase: string
+  suggestion: string
+  reason: string
+  by: string
+  side: SideId
+  status: 'open' | 'accepted' | 'declined'
+  reply: string | null
+  respondedBy: string | null
   createdAt?: Time
 }
 
@@ -185,4 +256,10 @@ export interface DebateMap {
   stances: Stance[]
   evidence: Evidence[]
   comments: Comment[]
+  /** Agreement on claims: answers, terms, definitions, wording challenges and earlier wordings. */
+  acceptances?: Acceptance[]
+  terms?: Term[]
+  definitions?: Definition[]
+  rewordings?: Rewording[]
+  versions?: ClaimVersion[]
 }

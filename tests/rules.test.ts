@@ -23,7 +23,8 @@ import {
 } from 'firebase/firestore'
 import type { User } from 'firebase/auth'
 import { acceptInvite, createDebate, createInvite, getInvite, roleIn, watchMyDebates } from '../src/data/debates'
-import { addArgument, addNote, editClaim, placeNote, setStance } from '../src/data/map'
+import { addArgument, addNote, placeNote, setStance } from '../src/data/map'
+import { acceptDefinition, acceptRewording, answerClaim, challengeWording, declineRewording, editClaim, openTerm, proposeDefinition, rejectDefinition, withdrawAnswer } from '../src/data/agreement'
 import { addComment, addEvidence, objectWithRestatement, removeEvidence, respondToRestatement, setRestateFirst } from '../src/data/honest'
 import { endRound, startRound } from '../src/data/live'
 import { forkClaim, voteOutcome } from '../src/data/subdebates'
@@ -240,8 +241,10 @@ describe('maintenance and map writes', () => {
 
   it('lets only the author change a claim’s wording', async () => {
     await setDoc(doc(db('raj'), 'debates/d1/claims/p1'), { text: 'Fares cover 20%.', type: 'fact', authorUid: 'raj', side: 'for', placed: true })
-    await assertSucceeds(updateDoc(doc(db('raj'), 'debates/d1/claims/p1'), { text: 'Fares cover about 20%.' }))
-    await assertFails(updateDoc(doc(db('ana'), 'debates/d1/claims/p1'), { text: 'Fares cover 50%.' }))
+    const raj = { uid: 'raj', displayName: 'Raj', photoURL: null, email: null } as unknown as User
+    const ana = { uid: 'ana', displayName: 'Ana', photoURL: null, email: null } as unknown as User
+    await assertSucceeds(editClaim(db('raj'), raj, 'd1', 'p1', 'Fares cover about 20%.', 'fact'))
+    await assertFails(editClaim(db('ana'), ana, 'd1', 'p1', 'Fares cover 50%.', 'fact'))
   })
 
   it('lets only a side’s leader set that side’s stance', async () => {
@@ -323,8 +326,11 @@ describe('map editing (milestone 2)', () => {
   })
 
   it('lets the author edit wording and type, but not move a claim to the other side', async () => {
-    await assertSucceeds(editClaim(db('ana'), 'd1', 'c', 'The city should make buses fare-free.', 'value'))
+    await assertSucceeds(editClaim(db('ana'), user('ana', 'Ana'), 'd1', 'c', 'The city should make buses fare-free.', 'value'))
     await assertFails(updateDoc(doc(db('ana'), 'debates/d1/claims/c'), { side: 'against' }))
+    // An edit that skips keeping the old version is refused.
+    await assertFails(updateDoc(doc(db('ana'), 'debates/d1/claims/c'), { text: 'Sneaky', version: 3 }))
+    await assertFails(updateDoc(doc(db('ana'), 'debates/d1/claims/c'), { text: 'Sneaky' }))
   })
 
   it('lets leaders set stances and inference checks within range', async () => {
@@ -747,5 +753,80 @@ describe('my debates list', () => {
     })
     expect(ids).toEqual([second, first])
     await assertFails(getDocs(query(collection(db('ben'), 'debates'), where('participantUids', 'array-contains', 'ana'))))
+  })
+})
+
+describe('agreeing claims', () => {
+  const user = (uid: string, name: string) => ({ uid, displayName: name, photoURL: null, email: null }) as unknown as User
+  const ana = user('ana', 'Ana')
+  const ben = user('ben', 'Ben')
+  const claim = async (id = 'c') => {
+    const data = (await getDoc(doc(db('ana'), `debates/d1/claims/${id}`))).data()!
+    return { ...data, id } as unknown as import('../src/model/types').Claim
+  }
+  const defs = async () => (await getDocs(collection(db('ana'), 'debates/d1/definitions'))).docs.map((d) => ({ ...d.data(), id: d.id }) as unknown as import('../src/model/types').Definition)
+
+  beforeEach(async () => {
+    await seedDebate()
+    await setDoc(doc(db('ana'), 'invites/t-lead'), invite('ana', 'leader', 'against'))
+    await setDoc(doc(db('ana'), 'invites/t-read'), invite('ana', 'reader', null))
+    await join('ben', 't-lead', 'leader', 'against')
+    await join('rita', 't-read', 'reader', null)
+  })
+
+  it('lets the other side accept or dispute a claim, for its current version only', async () => {
+    await assertFails(answerClaim(db('ana'), ana, 'd1', await claim(), 'for', 'accepted'))
+    await assertFails(answerClaim(db('rita'), user('rita', 'Rita'), 'd1', await claim(), 'against', 'accepted'))
+    await assertFails(answerClaim(db('ben'), ben, 'd1', { ...(await claim()), version: 2 }, 'against', 'accepted'))
+    await assertSucceeds(answerClaim(db('ben'), ben, 'd1', await claim(), 'against', 'accepted'))
+    await assertSucceeds(answerClaim(db('ben'), ben, 'd1', await claim(), 'against', 'disputed'))
+    await assertSucceeds(withdrawAnswer(db('ben'), 'd1', 'c', 'against'))
+  })
+
+  it('keeps the old wording as a version when the author edits', async () => {
+    await answerClaim(db('ben'), ben, 'd1', await claim(), 'against', 'accepted')
+    await assertSucceeds(editClaim(db('ana'), ana, 'd1', 'c', 'Buses should be fare-free.', 'value'))
+    const v1 = (await getDoc(doc(db('rita'), 'debates/d1/claimVersions/c__1'))).data()
+    expect(v1?.text).toBe('Buses should be free.')
+    expect((await claim()).version).toBe(2)
+    await assertFails(editClaim(db('ben'), ben, 'd1', 'c', 'Nope', 'value'))
+    // A forged version record is refused.
+    await assertFails(setDoc(doc(db('ana'), 'debates/d1/claimVersions/c__2'), { claimId: 'c', version: 2, text: 'Made up', type: 'value', by: 'ana', at: serverTimestamp() }))
+  })
+
+  it('runs a term through definition, rejection with a counter, and acceptance', async () => {
+    const termId = await openTerm(db('ben'), ben, 'd1', 'against', 'c', 'free', 'No fare at the point of use')
+    await assertFails(openTerm(db('rita'), user('rita', 'Rita'), 'd1', 'against', 'c', 'buses'))
+    const [first] = await defs()
+    expect(first.status).toBe('pending')
+    // Only the other side's leader answers; a rejection needs a counter-definition or addendum.
+    await assertFails(acceptDefinition(db('ben'), ben, 'd1', first))
+    await assertFails(updateDoc(doc(db('ana'), `debates/d1/definitions/${first.id}`), { status: 'rejected', respondedBy: 'ana' }))
+    await assertSucceeds(rejectDefinition(db('ana'), ana, 'd1', 'for', first, { kind: 'addendum', text: 'paid for from general taxes' }))
+    const counter = (await defs()).find((d) => d.parentId === first.id)!
+    expect(counter.side).toBe('for')
+    await assertFails(acceptDefinition(db('ana'), ana, 'd1', counter))
+    await assertSucceeds(acceptDefinition(db('ben'), ben, 'd1', counter))
+    // Either side can later propose a new definition, which reopens the term.
+    await assertSucceeds(proposeDefinition(db('ana'), ana, 'd1', 'for', { id: termId, claimId: 'c', phrase: 'free', openedBy: 'ben', side: 'against' }, 'Free to ride'))
+    // A counter that doesn't answer a rejected definition is refused.
+    await assertFails(setDoc(doc(db('ana'), 'debates/d1/definitions/fake'), {
+      termId, claimId: 'c', text: 'x', kind: 'counter', parentId: first.id, by: 'ana', side: 'for', status: 'pending', respondedBy: null, answeredWith: null,
+    }))
+  })
+
+  it('lets the other side challenge wording, and only the author take or decline it', async () => {
+    const id = await challengeWording(db('ben'), ben, 'd1', 'against', await claim(), { phrase: 'free', suggestion: 'fare-free', reason: 'Nothing is free' })
+    await assertFails(challengeWording(db('ana'), ana, 'd1', 'for', await claim(), { phrase: 'free', suggestion: 'x', reason: '' }))
+    const r = (await getDoc(doc(db('ana'), `debates/d1/rewordings/${id}`))).data()
+    const rewording = { ...r, id } as unknown as import('../src/model/types').Rewording
+    await assertFails(declineRewording(db('ben'), ben, 'd1', rewording, 'no'))
+    await assertSucceeds(acceptRewording(db('ana'), ana, 'd1', await claim(), rewording))
+    const after = await claim()
+    expect(after.text).toBe('Buses should be fare-free.')
+    expect(after.version).toBe(2)
+    const id2 = await challengeWording(db('ben'), ben, 'd1', 'against', after, { phrase: 'Buses', suggestion: 'City buses', reason: '' })
+    const r2 = { ...(await getDoc(doc(db('ana'), `debates/d1/rewordings/${id2}`))).data(), id: id2 } as unknown as import('../src/model/types').Rewording
+    await assertSucceeds(declineRewording(db('ana'), ana, 'd1', r2, 'All buses, not only city ones'))
   })
 })

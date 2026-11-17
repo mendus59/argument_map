@@ -1,4 +1,4 @@
-import { collection, doc, serverTimestamp, setDoc, updateDoc, writeBatch, type Firestore } from 'firebase/firestore'
+import { collection, doc, serverTimestamp, setDoc, writeBatch, type Firestore } from 'firebase/firestore'
 import type { User } from 'firebase/auth'
 import type { ClaimSource, ClaimType, Link, SideId, Stance, StanceValue } from '../model/types'
 
@@ -72,11 +72,6 @@ export async function placeNote(
     createdAt: serverTimestamp(),
   })
   await batch.commit()
-}
-
-/** Changes a claim's wording or type. Only its author may do this. */
-export async function editClaim(db: Firestore, debateId: string, claimId: string, text: string, type: ClaimType) {
-  await updateDoc(doc(db, 'debates', debateId, 'claims', claimId), { text: text.trim(), type, updatedAt: serverTimestamp() })
 }
 
 /**
