@@ -17,7 +17,22 @@ const outcomeLabel = (o: Outcome | null | undefined) =>
   o === 'accepted' ? 'accepted' : o === 'rejected' ? 'rejected' : o === 'disputed' ? 'agreed to disagree' : 'no outcome yet'
 
 /** On a selected box: open its sub-debate, or fork one. */
-export function ForkSection({ map, claim, user, side, sub }: { map: DebateMap; claim: Claim; user: User; side: SideId | null; sub?: SubStatus }) {
+export function ForkSection({
+  map,
+  claim,
+  user,
+  side,
+  sub,
+  contention,
+}: {
+  map: DebateMap
+  claim: Claim
+  user: User
+  side: SideId | null
+  sub?: SubStatus
+  /** Why this box is a real point of contention, if it is: offer the spin-off prominently. */
+  contention?: string | null
+}) {
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(false)
@@ -48,6 +63,22 @@ export function ForkSection({ map, claim, user, side, sub }: { map: DebateMap; c
       setError(true)
       setBusy(false)
     }
+  }
+  if (contention) {
+    return (
+      <div className="ripple-note waiting stack-xs">
+        <strong className="small">A real point of contention</strong>
+        <p className="small">
+          {contention} Spin it off into its own debate to settle it there. Meanwhile, anything resting on it waits, and the rest of this debate can move on.
+        </p>
+        <span>
+          <button className="btn pri small-btn" type="button" onClick={fork} disabled={busy}>
+            ⑂ {busy ? 'Spinning off…' : 'Spin off into its own debate'}
+          </button>
+        </span>
+        {error && <small className="error">The sub-debate couldn’t be created. Try again.</small>}
+      </div>
+    )
   }
   return (
     <div className="stack-xs">

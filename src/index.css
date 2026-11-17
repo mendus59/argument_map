@@ -376,3 +376,9 @@ input.input[type="search"] { padding: 9px 11px; font-size: 15px; }
   .conversation { overflow: visible; }
   .pane { border-left: 0; border-top: 1px solid var(--line); height: 70vh; }
 }
+.standing { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--surface); display: flex; flex-direction: column; gap: 8px; }
+.meter { display: flex; height: 8px; border-radius: 999px; background: var(--sunk); overflow: hidden; }
+.meter-agreed { background: var(--agree); }
+.meter-disputed { background: var(--dis); }
+.standing .history-list { list-style: none; padding-left: 0; }
+.standing .linklike { text-align: left; display: inline; }

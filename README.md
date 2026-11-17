@@ -11,7 +11,7 @@ Parrhesia: lay out debates as shared argument maps and debate more constructivel
 - Definitions go back and forth until agreed, with counter-definitions or addenda, so the real disagreement shows.
 - Agreed claims, terms and wording carry over to all your debates with the same person, and a change to one flags every conclusion resting on it.
 - A claim builder spells out a claim's opposite, converse and contrapositive in plain words, with tips for debating it.
-- Fork a pivotal premise into its own sub-debate, and restate before you rebut.
+- See your core disagreements at a glance, and spin any of them off into its own sub-debate.
 <!-- site-summary:end -->
 
 Parrhesia (pa-REE-zha, Greek for frank and honest speech) is a web app for laying out debates as argument maps and debating more constructively. Two people or two teams build a shared map of premises, reasons, objections and conclusions, record where each side stands on every box, and fork pivotal premises into sub-debates.
